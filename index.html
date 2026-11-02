@@ -1,0 +1,2507 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>EDU_Acc — منصة التعليم المحاسبي</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+ body{font-family:'Cairo',sans-serif}
+ html *{border-color:#e2e8f0}
+ @media print{.no-print{display:none!important}}
+ #sidebar{will-change:transform}
+ #sidebar::-webkit-scrollbar{width:8px}
+ #sidebar::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:8px}
+ .navBtn{display:block}
+ #tablesList table input{outline:none}
+ #tableEditor input{outline:none}
+ #tableEditor input:focus{background:#eef2ff}
+</style>
+</head>
+<body class="bg-slate-50 text-slate-800 p-4 md:p-8">
+<div id="appRoot" class="max-w-6xl mx-auto space-y-6">
+<div id="profBar" class="hidden no-print sticky top-2 z-30 bg-slate-800 text-white text-sm rounded-xl px-4 py-2 shadow flex flex-wrap items-center gap-x-4 gap-y-1"></div>
+
+<header class="bg-white border border-slate-200 rounded-xl p-4 shadow-sm no-print flex flex-wrap items-center justify-between gap-3">
+  <div class="flex items-center gap-3">
+    <button type="button" onclick="openSidebar()" class="bg-slate-800 hover:bg-slate-900 text-white p-2.5 rounded-lg shadow" aria-label="فتح القائمة" title="القائمة">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+    <div>
+      <h1 class="text-xl font-bold text-slate-800 tracking-wide">EDU_Acc</h1>
+      <p class="text-slate-500 text-xs mt-0.5">المنصة التعليمية للمحاسبة المالية — قيود اليومية (بسيطة ومركبة) ← دفتر الأستاذ ← ميزان المراجعة</p>
+    </div>
+  </div>
+  <div class="flex flex-wrap items-center gap-2">
+    <button type="button" onclick="exportPdf('current')" class="text-xs bg-rose-600 hover:bg-rose-700 text-white rounded-full px-3 py-1 font-bold" title="حفظ القسم الحالي كملف PDF">📄 حفظ PDF</button>
+    <label class="inline-flex items-center gap-2 text-xs bg-slate-50 border border-slate-200 rounded-full px-3 py-1 cursor-pointer text-slate-700"><input type="checkbox" id="codesChk" onchange="toggleCodes()"> ⚙️ إظهار أكواد الحسابات</label>
+    <span id="sheetPill" onclick="tab('sheets')" class="hidden inline-block text-xs bg-indigo-100 text-indigo-800 rounded-full px-3 py-1 cursor-pointer"></span>
+  </div>
+</header>
+
+<!-- نموذج القيد -->
+<section class="bg-white rounded-xl p-5 shadow-sm border no-print">
+  <h2 class="text-xl font-bold mb-4 pb-2 border-b">📝 تسجيل قيد يومية</h2>
+  <form id="f" onsubmit="saveEntry(event)" oninput="calc()" class="space-y-4">
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+        <div class="flex justify-between items-center mb-2">
+          <b class="text-emerald-700">الأطراف المدينة (من حـ/) <span id="dLbl" class="hidden text-xs bg-slate-700 text-white rounded px-2 py-0.5 mr-1">من مذكورين</span></b>
+          <button type="button" onclick="addRow('d')" class="text-xs bg-slate-700 text-white px-2 py-1 rounded">+ سطر مدين</button>
+        </div>
+        <div id="dRows" class="space-y-2"></div>
+      </div>
+      <div class="bg-slate-50 p-3 rounded-lg border border-slate-200">
+        <div class="flex justify-between items-center mb-2">
+          <b class="text-rose-700">الأطراف الدائنة (إلى حـ/) <span id="cLbl" class="hidden text-xs bg-slate-700 text-white rounded px-2 py-0.5 mr-1">إلى مذكورين</span></b>
+          <button type="button" onclick="addRow('c')" class="text-xs bg-slate-700 text-white px-2 py-1 rounded">+ سطر دائن</button>
+        </div>
+        <div id="cRows" class="space-y-2"></div>
+      </div>
+    </div>
+    <div id="status" class="text-center font-bold rounded-lg p-2 bg-slate-100"></div>
+    <div id="hint" class="text-xs text-slate-700 bg-indigo-50 rounded p-2 hidden"></div>
+    <div class="text-center"><button type="button" onclick="diagnose()" class="text-xs bg-slate-100 text-slate-700 border border-amber-300 px-3 py-1.5 rounded">❓ لماذا القيد غير متوازن؟</button></div>
+    <div id="diag" class="hidden"></div>
+    <div class="grid md:grid-cols-2 gap-4">
+      <input id="desc" placeholder="البيان: مثال: شراء بضاعة نقداً" class="p-2.5 rounded border" required>
+      <input id="date" type="date" class="p-2.5 rounded border" required>
+    </div>
+    <button class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg">حفظ القيد والترحيل التلقائي 🚀</button>
+  </form>
+</section>
+
+<section id="v-journal" class="bg-white rounded-xl p-5 shadow-sm border">
+  <div class="flex items-center gap-2 mb-3"><h2 class="text-xl font-bold">دفتر اليومية</h2><button type="button" onclick="concept('journal')" class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold shrink-0" title="ما هذا؟">?</button></div>
+  <input id="q" oninput="renderJournal()" placeholder="🔍 بحث في البيان أو اسم الحساب" class="w-full p-2 mb-3 rounded border no-print">
+  <div class="overflow-x-auto"><table class="w-full text-right">
+    <thead><tr class="bg-slate-100 text-slate-600"><th class="p-2">#</th><th class="p-2">التاريخ</th><th class="p-2">الحساب</th><th class="p-2 text-emerald-700">مدين</th><th class="p-2 text-rose-700">دائن</th><th class="p-2 no-print"></th></tr></thead>
+    <tbody id="jBody"></tbody></table></div>
+</section>
+
+<section id="v-ledger" class="hidden space-y-3"><div class="flex items-center gap-2"><h2 class="text-xl font-bold">دفتر الأستاذ</h2><button type="button" onclick="concept('ledger')" class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold shrink-0" title="ما هذا؟">?</button></div><div id="lBody" class="grid md:grid-cols-2 gap-5"></div></section>
+
+<section id="v-trial" class="hidden bg-white rounded-xl p-5 shadow-sm border">
+  <div class="flex items-center gap-2 mb-3"><h2 class="text-xl font-bold">ميزان المراجعة بالأرصدة</h2><button type="button" onclick="concept('trial')" class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold shrink-0" title="ما هذا؟">?</button></div>
+  <div class="overflow-x-auto"><table class="w-full text-right">
+    <thead><tr class="bg-slate-100 text-slate-600"><th class="p-2">الحساب</th><th class="p-2 text-emerald-700">رصيد مدين</th><th class="p-2 text-rose-700">رصيد دائن</th></tr></thead>
+    <tbody id="tBody"></tbody><tfoot id="tFoot" class="font-bold border-t-2 bg-slate-50"></tfoot></table></div>
+  <p class="text-xs text-slate-500 mt-3">تنبيه: توازن الميزان لا يعني خلو الدفاتر من الأخطاء (كاختيار حساب خاطئ بنفس المبلغ).</p>
+</section>
+
+<section id="v-fin" class="hidden space-y-4">
+  <div id="finUn"></div>
+  <div class="grid md:grid-cols-2 gap-5">
+    <div class="bg-white rounded-xl p-5 shadow-sm border"><div class="flex items-center gap-2 mb-3"><h2 class="text-xl font-bold">قائمة الدخل</h2><button type="button" onclick="concept('income')" class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold shrink-0" title="ما هذا؟">?</button></div><div id="isBody"></div></div>
+    <div class="bg-white rounded-xl p-5 shadow-sm border"><div class="flex items-center gap-2 mb-3"><h2 class="text-xl font-bold">المركز المالي (الميزانية)</h2><button type="button" onclick="concept('balance')" class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold shrink-0" title="ما هذا؟">?</button></div><div id="bsBody"></div></div>
+  </div>
+</section>
+
+<section id="v-dash" class="hidden space-y-4">
+  <div class="flex items-center gap-2"><h2 class="text-xl font-bold">لوحة المؤشرات المالية</h2><button type="button" onclick="concept('ratios')" class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold shrink-0" title="ما هذا؟">?</button></div>
+  <div id="dashBody"></div>
+</section>
+
+<!-- الجداول المخصصة المرنة -->
+<section id="v-tables" class="hidden space-y-4">
+  <div class="flex items-center gap-2">
+    <h2 class="text-xl font-bold">📋 الجداول المخصصة</h2>
+    <button type="button" onclick="concept('customTables')" class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold shrink-0" title="ما هذا؟">?</button>
+  </div>
+  <div class="bg-white rounded-xl p-5 shadow-sm border space-y-3">
+    <p class="text-sm text-slate-600">أنشئ جداولك الخاصة (إيرادات، مصروفات، صافي الربح والخسارة، تقارير إدارية...) وعبّئها يدوياً بدون قيود محاسبية مزدوجة. القيود الرسمية تبقى في دفتر اليومية، وهذه مساحة حرة للعرض والتحليل.</p>
+    <div class="flex flex-wrap gap-2">
+      <button onclick="newTable()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded font-bold">➕ إنشاء جدول مخصص</button>
+      <button onclick="exportAllTablesXlsx()" class="bg-slate-700 text-white px-3 py-2 rounded text-sm">📊 تصدير كل الجداول Excel</button>
+    </div>
+    <div id="tablesList" class="space-y-4"></div>
+  </div>
+  <div id="tableEditor" class="hidden bg-white rounded-xl p-5 shadow-sm border space-y-3"></div>
+</section>
+
+<section id="v-sheets" class="hidden space-y-4">
+  <div id="shActive"></div>
+  <div class="bg-white rounded-xl p-5 shadow-sm border space-y-3">
+    <h2 class="text-xl font-bold">🎒 للطالب: حل شيت من المعلم</h2>
+    <p class="text-sm text-slate-600">استورد ملف الشيت الذي أرسله المعلم، ثم سجّل القيود المطلوبة في دفتر اليومية، وبعدها صدّر إجابتك لتُرسلها للمعلم مع تقرير التصحيح الآلي.</p>
+    <div class="flex flex-wrap gap-2 items-center">
+      <div id="stWho" class="text-sm bg-slate-100 rounded px-3 py-2"></div>
+      <label class="bg-indigo-600 text-white px-4 py-2 rounded cursor-pointer text-sm font-bold">📥 استيراد شيت تدريب<input type="file" class="hidden" onchange="importSheet(this)"></label>
+      <button id="btnExpAns" onclick="exportAnswer()" class="bg-slate-700 text-white px-4 py-2 rounded text-sm font-bold">📤 تصدير إجابة الشيت</button>
+      <button onclick="endSheet()" class="bg-slate-200 px-3 py-2 rounded text-sm">إنهاء الشيت</button>
+    </div>
+    <div id="cloudSheets"></div>
+    <div id="stRes"></div>
+  </div>
+  <div id="tCard1" class="hidden bg-white rounded-xl p-5 shadow-sm border space-y-3">
+    <h2 class="text-xl font-bold">👩‍🏫 للمعلم: إنشاء شيت تمرين</h2>
+    <p class="text-sm text-slate-600">عند التصدير ستختار: «حل تلقائي» (تقييم آلي حسب عدد القيود بالحل) أو «وضع الحل في دفتر اليومية» (سجّل القيود الصحيحة في الدفتر أولاً). الحل لا يظهر نصياً داخل الملف.</p>
+    <div class="grid md:grid-cols-2 gap-3">
+      <input id="shT" placeholder="عنوان الشيت" class="p-2 rounded border">
+      <div class="flex gap-2"><label class="text-xs text-slate-600">خانة الدرجات<input id="shM" type="number" min="1" value="10" placeholder="خانة الدرجات" title="خانة الدرجات" class="p-2 rounded border w-36 block mt-1"></label><label class="text-xs text-slate-600">عدد القيود بالحل<input id="shE" type="number" min="0" value="0" placeholder="عدد القيود بالحل" title="عدد القيود بالحل" class="p-2 rounded border w-40 block mt-1"></label></div>
+      <textarea id="shI" rows="3" placeholder="نص التمرين / التعليمات" class="p-2 rounded border md:col-span-2"></textarea>
+    </div>
+    <label class="text-sm flex items-center gap-2"><input type="checkbox" id="shAcc" checked> تضمين دليل الحسابات الحالي</label>
+    <div id="shInfo" class="text-xs text-slate-600"></div>
+    <button id="btnExpSheet" onclick="exportSheet()" class="bg-indigo-600 text-white px-4 py-2 rounded font-bold">📤 تصدير شيت التمرين (للطلاب)</button>
+  </div>
+  <div id="tCard2" class="hidden bg-white rounded-xl p-5 shadow-sm border space-y-3">
+    <h2 class="text-xl font-bold">🧑‍🏫 للمعلم: معاينة وتقييم تسليمات الطلاب</h2>
+    <label class="inline-block bg-indigo-600 text-white px-4 py-2 rounded cursor-pointer text-sm font-bold">📥 اختيار ملفات إجابات الطلاب (أكثر من ملف مسموح)<input type="file" multiple class="hidden" onchange="reviewFiles(this)"></label>
+    <div id="cloudBar"></div>
+    <div id="rvOut" class="overflow-x-auto"></div>
+  </div>
+  <div id="shJ"></div>
+</section>
+
+<section id="v-ex" class="hidden space-y-5">
+  <div id="exProg"></div>
+  <div id="exSolve" class="hidden"></div>
+  <div id="exList" class="space-y-4"></div>
+</section>
+
+<section id="v-tools" class="hidden space-y-3">
+  <details open class="bg-white rounded-xl border shadow-sm p-4">
+    <summary class="font-bold cursor-pointer">🌳 دليل الحسابات الشجري<button type="button" onclick="event.preventDefault();event.stopPropagation();concept('coa')" class="w-6 h-6 mx-2 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold" title="ما هذا؟">?</button></summary>
+    <div id="coaTree" class="mt-3 text-sm"></div>
+    <div class="grid md:grid-cols-4 gap-2 mt-3">
+      <input id="coaN" placeholder="اسم الحساب الجديد" class="p-2 rounded border">
+      <select id="coaG" class="p-2 rounded border bg-white"></select>
+      <input id="coaC" placeholder="الكود (اختياري، يُولَّد تلقائياً)" class="p-2 rounded border">
+      <button onclick="addAcc()" class="bg-indigo-600 text-white px-3 py-2 rounded">إضافة حساب</button>
+    </div>
+    <button onclick="autoNumber()" class="mt-2 text-xs bg-slate-200 px-3 py-1.5 rounded">ترقيم الحسابات غير المرقمة تلقائياً</button>
+  </details>
+  <details class="bg-white rounded-xl border shadow-sm p-4">
+    <summary class="font-bold cursor-pointer">📉 جدول إهلاك الأصول الثابتة<button type="button" onclick="event.preventDefault();event.stopPropagation();concept('dep')" class="w-6 h-6 mx-2 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold" title="ما هذا؟">?</button></summary>
+    <div class="grid md:grid-cols-3 gap-2 mt-2 text-sm">
+      <label>الأصل<select id="dpA" class="w-full p-2 rounded border bg-white"></select></label>
+      <label>تكلفة الأصل<input id="dpC" type="number" min="0" step="0.01" class="w-full p-2 rounded border"></label>
+      <label>قيمة الخردة<input id="dpS" type="number" min="0" step="0.01" value="0" class="w-full p-2 rounded border"></label>
+      <label>العمر الإنتاجي (سنوات)<input id="dpL" type="number" min="1" max="50" value="5" class="w-full p-2 rounded border"></label>
+      <label>الطريقة<select id="dpM" class="w-full p-2 rounded border bg-white"><option value="sl">القسط الثابت</option><option value="db">القسط المتناقص (نسبة ثابتة)</option></select></label>
+      <label>نسبة الإهلاك المتناقص %<input id="dpR" type="number" min="0" max="100" step="0.1" placeholder="2 ÷ العمر" class="w-full p-2 rounded border"></label>
+      <label>سنة البداية<input id="dpY" type="number" class="w-full p-2 rounded border"></label>
+    </div>
+    <div class="flex flex-wrap gap-2 mt-3"><button onclick="dpBuild()" class="bg-indigo-600 text-white px-4 py-2 rounded">إنشاء الجدول</button><button onclick="dpPostAll()" class="bg-slate-700 text-white px-4 py-2 rounded">تسجيل قيود كل السنوات</button></div>
+    <div id="dpOut" class="mt-3 overflow-x-auto"></div>
+  </details>
+  <details open class="bg-white rounded-xl border shadow-sm p-4">
+    <summary class="font-bold cursor-pointer">📥 أرصدة أول المدة (قيد افتتاحي)</summary>
+    <p class="text-xs text-slate-500 my-2">اكتب رصيد كل حساب في خانة المدين أو الدائن، ويجب أن يتساوى المجموعان.</p>
+    <table class="w-full text-right"><thead><tr class="text-slate-600"><th class="p-1">الحساب</th><th>مدين</th><th>دائن</th></tr></thead><tbody id="opBody" oninput="opCalc()"></tbody></table>
+    <div class="flex flex-wrap justify-between items-center gap-2 mt-2"><span id="opSt" class="text-sm font-bold"></span><button onclick="doOpen()" class="bg-indigo-600 text-white px-4 py-2 rounded">ترحيل القيد الافتتاحي</button></div>
+  </details>
+  <details class="bg-white rounded-xl border shadow-sm p-4">
+    <summary class="font-bold cursor-pointer">🛠 قيود التسوية (آخر الفترة)<button type="button" onclick="event.preventDefault();event.stopPropagation();concept('adjusting')" class="w-6 h-6 mx-2 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold" title="ما هذا؟">?</button></summary>
+    <div class="grid md:grid-cols-2 gap-3 mt-2"><label class="text-sm">نوع التسوية<select id="adjT" onchange="adjUI()" class="w-full p-2 rounded border bg-white"></select></label><div id="adjF" class="grid gap-2"></div></div>
+    <button onclick="doAdj()" class="mt-3 bg-indigo-600 text-white px-4 py-2 rounded">تسجيل قيد التسوية</button>
+  </details>
+  <details class="bg-white rounded-xl border shadow-sm p-4">
+    <summary class="font-bold cursor-pointer">🔒 قيود الإقفال<button type="button" onclick="event.preventDefault();event.stopPropagation();concept('closing')" class="w-6 h-6 mx-2 rounded-full bg-indigo-100 text-indigo-700 text-sm font-bold" title="ما هذا؟">?</button></summary>
+    <p class="text-xs text-slate-600 my-2">يُقفل كل حساب إيراد ومصروف في «ملخص الدخل»، ثم يُقفل الملخص في رأس المال. بعد الإقفال تظهر الإيرادات والمصروفات بصفر في قائمة الدخل، فاطبعها قبل الإقفال. للتراجع احذف قيود الإقفال من دفتر اليومية.</p>
+    <button onclick="closeBooks()" class="bg-slate-700 text-white px-4 py-2 rounded">إقفال الحسابات</button>
+  </details>
+  <details class="bg-white rounded-xl border shadow-sm p-4">
+    <summary class="font-bold cursor-pointer">🧾 ضريبة القيمة المضافة</summary>
+    <div class="grid md:grid-cols-3 gap-2 mt-2">
+      <select id="vK" class="p-2 rounded border bg-white"><option value="s">عملية بيع</option><option value="p">عملية شراء</option></select>
+      <select id="vP" class="p-2 rounded border bg-white"><option value="c">نقداً</option><option value="r">على الحساب</option></select>
+      <select id="vM" onchange="vatCalc()" class="p-2 rounded border bg-white"><option value="n">المبلغ قبل الضريبة</option><option value="g">المبلغ شامل الضريبة</option></select>
+      <input id="vA" type="number" min="0" step="0.01" placeholder="المبلغ" oninput="vatCalc()" class="p-2 rounded border">
+      <input id="vT" type="number" min="0" value="14" oninput="vatCalc()" title="نسبة الضريبة %" class="p-2 rounded border">
+    </div>
+    <div id="vR" class="font-bold my-2 text-sm"></div>
+    <button onclick="doVat()" class="bg-indigo-600 text-white px-4 py-2 rounded">تسجيل القيد بالضريبة</button>
+  </details>
+  <details class="bg-white rounded-xl border shadow-sm p-4">
+    <summary class="font-bold cursor-pointer">🏦 تسوية البنك</summary>
+    <div id="brF" class="grid md:grid-cols-2 gap-2 mt-2"></div>
+    <button onclick="brFill()" class="bg-slate-200 px-3 py-1.5 rounded text-sm mt-2">جلب رصيد البنك من الدفاتر</button>
+    <div id="brR" class="mt-2 space-y-1 text-sm"></div>
+  </details>
+  <details class="bg-white rounded-xl border shadow-sm p-4">
+    <summary class="font-bold cursor-pointer">📒 دفتر النقدية / أي حساب</summary>
+    <select id="cbSel" onchange="cashBook()" class="p-2 rounded border bg-white mt-2"></select>
+    <div class="overflow-x-auto mt-2"><table class="w-full text-right"><thead><tr class="bg-slate-100 text-slate-600"><th class="p-2">التاريخ</th><th class="p-2">البيان</th><th class="p-2 text-emerald-700">مدين / مقبوضات</th><th class="p-2 text-rose-700">دائن / مدفوعات</th><th class="p-2">الرصيد</th></tr></thead><tbody id="cbBody"></tbody></table></div>
+  </details>
+  <details class="bg-white rounded-xl border shadow-sm p-4">
+    <summary class="font-bold cursor-pointer">📦 المخزون (FIFO / المتوسط المتحرك)</summary>
+    <div id="invRows" class="space-y-2 mt-2"></div>
+    <div class="flex gap-2 mt-2"><button onclick="invAdd()" class="bg-slate-200 px-3 py-1.5 rounded text-sm">+ حركة</button><button onclick="invCalc()" class="bg-indigo-600 text-white px-4 py-2 rounded">احسب</button></div>
+    <div id="invR" class="mt-3 overflow-x-auto"></div>
+  </details>
+</section>
+</div>
+
+<!-- القائمة الجانبية -->
+<div id="sbBackdrop" class="hidden fixed inset-0 bg-slate-900/50 z-40 no-print" onclick="closeSidebar()"></div>
+<aside id="sidebar" class="fixed top-0 right-0 h-full w-72 max-w-[85vw] bg-white shadow-2xl z-50 translate-x-full transition-transform duration-300 no-print flex flex-col" aria-label="القائمة الرئيسية">
+  <div class="p-4 border-b flex items-center justify-between bg-slate-800 text-white shrink-0">
+    <span class="font-bold text-lg tracking-wide">EDU_Acc</span>
+    <button type="button" onclick="closeSidebar()" class="text-slate-300 hover:text-white text-2xl leading-none" aria-label="إغلاق">×</button>
+  </div>
+  <nav class="flex-1 overflow-y-auto p-3 space-y-1" id="sbNav">
+    <div class="text-xs text-slate-400 font-bold px-3 pt-1 pb-2">الأقسام</div>
+    <button id="t-journal" onclick="tab('journal')" class="navBtn w-full text-right px-3 py-2.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100">📒 دفتر اليومية</button>
+    <button id="t-ledger" onclick="tab('ledger')" class="navBtn w-full text-right px-3 py-2.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100">📚 دفتر الأستاذ</button>
+    <button id="t-trial" onclick="tab('trial')" class="navBtn w-full text-right px-3 py-2.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100">⚖️ ميزان المراجعة</button>
+    <button id="t-fin" onclick="tab('fin')" class="navBtn w-full text-right px-3 py-2.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100">📊 القوائم المالية</button>
+    <button id="t-dash" onclick="tab('dash')" class="navBtn w-full text-right px-3 py-2.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100">📈 المؤشرات المالية</button>
+    <button id="t-tables" onclick="tab('tables')" class="navBtn w-full text-right px-3 py-2.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100">📋 الجداول المخصصة</button>
+    <button id="t-sheets" onclick="tab('sheets')" class="navBtn w-full text-right px-3 py-2.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100">📝 الشيتات</button>
+    <button id="t-ex" onclick="tab('ex')" class="navBtn w-full text-right px-3 py-2.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100">🎓 التمارين</button>
+    <button id="t-tools" onclick="tab('tools')" class="navBtn w-full text-right px-3 py-2.5 rounded-lg font-bold transition text-slate-700 hover:bg-slate-100">🧰 تسويات وأدوات</button>
+    <a href="spreadsheet.html" target="_blank" onclick="openSheetApp(event)" class="navBtn w-full text-right px-3 py-2.5 rounded-lg font-bold text-emerald-700 hover:bg-emerald-50 no-underline">📊 ورقة تدريب (Excel)</a>
+  </nav>
+  <div class="p-3 border-t space-y-2 bg-slate-50 shrink-0">
+    <div class="text-xs text-slate-400 font-bold px-1 pb-1">أدوات عامة</div>
+    <div class="grid grid-cols-2 gap-2">
+      <button onclick="window.print()" class="text-xs bg-slate-200 px-2 py-2 rounded">🖨️ طباعة / PDF</button>
+      <button onclick="exportXlsx()" class="text-xs bg-slate-700 text-white px-2 py-2 rounded">📊 تصدير Excel</button>
+      <button onclick="exportPdf('current')" class="text-xs bg-rose-600 text-white px-2 py-2 rounded font-bold">📄 حفظ PDF (القسم الحالي)</button>
+      <button onclick="exportPdf('all')" class="text-xs bg-rose-100 text-rose-800 px-2 py-2 rounded font-bold">📑 PDF كامل (التقرير المحاسبي)</button>
+      <button onclick="setLang()" class="text-xs bg-indigo-100 text-indigo-800 px-2 py-2 rounded font-bold" title="English / عربي">EN / ع</button>
+      <button onclick="tourStart()" class="text-xs bg-slate-100 text-slate-700 px-2 py-2 rounded font-bold">❓ جولة</button>
+      <button onclick="backup()" class="text-xs bg-slate-200 px-2 py-2 rounded">💾 نسخة احتياطية</button>
+      <label class="text-xs bg-slate-200 px-2 py-2 rounded cursor-pointer text-center">📂 استرجاع<input type="file" class="hidden" onchange="restore(this)"></label>
+      <button onclick="clearAll()" class="text-xs bg-slate-50 text-red-700 px-2 py-2 rounded border border-red-300 col-span-2" title="يحذف القيود فقط ويُبقي دليل الحسابات والأكواد">🧹 مسح القيود (يُبقي دليل الحسابات)</button>
+      <button onclick="resetAll()" class="text-xs bg-rose-700 text-white px-2 py-2 rounded col-span-2">⚠ إعادة ضبط كاملة</button>
+    </div>
+  </div>
+</aside>
+
+<div id="tourOv" class="hidden" style="position:fixed;inset:0;z-index:9990">
+  <div id="tourHole"></div>
+  <div style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);width:92%;max-width:440px;z-index:9999" class="bg-white rounded-xl shadow-lg p-4">
+    <div id="tourN" class="text-xs text-slate-500 mb-1"></div>
+    <p id="tourTxt" class="font-semibold leading-7"></p>
+    <div class="flex justify-between items-center mt-3">
+      <button id="tourSkip" onclick="tourEnd()" class="text-sm text-slate-500"></button>
+      <div class="flex gap-2"><button id="tourPrev" onclick="tourGo(-1)" class="px-3 py-1.5 rounded bg-slate-200 text-sm"></button><button id="tourNext" onclick="tourGo(1)" class="px-3 py-1.5 rounded bg-indigo-600 text-white text-sm font-bold"></button></div>
+    </div>
+  </div>
+</div>
+<div id="cm" class="hidden" style="position:fixed;inset:0;z-index:9980;background:rgba(15,23,42,.55);overflow:auto" onclick="if(event.target===this)this.classList.add('hidden')">
+  <div class="bg-white rounded-xl shadow-lg p-5 m-4 max-w-lg mx-auto mt-16 space-y-3">
+    <div class="flex justify-between items-start gap-3"><h3 id="cmT" class="text-xl font-bold text-indigo-700"></h3><button onclick="document.getElementById('cm').classList.add('hidden')" class="text-slate-400 text-xl leading-none">✕</button></div>
+    <div id="cmB" class="space-y-3 text-sm leading-7"></div>
+  </div>
+</div>
+
+<div id="loginOv" class="hidden" style="position:fixed;inset:0;z-index:10000;background:rgba(15,23,42,.85);overflow:auto">
+  <div class="bg-white rounded-xl shadow-lg p-6 m-4 max-w-md mx-auto mt-8 space-y-3" role="dialog" aria-modal="true" aria-labelledby="lgT">
+    <h2 id="lgT" class="text-xl font-bold text-indigo-700"></h2>
+    <p class="text-sm text-slate-600">أدخل بياناتك كما هي مسجلة في المعهد. تُحفظ على هذا الجهاز فقط، وتُضاف إلى ملفات إجابات الشيتات التي ترسلها لمعلمك.</p>
+    <label class="block text-sm font-semibold">الاسم الثلاثي
+      <input id="lgName" autocomplete="off" placeholder="مثال: محمد أحمد علي" class="mt-1 w-full p-2.5 rounded border" onkeydown="if(event.key==='Enter')loginSubmit()"></label>
+    <label class="block text-sm font-semibold">كود الطالب في المعهد (أرقام فقط)
+      <input id="lgCode" autocomplete="off" inputmode="numeric" placeholder="مثال: 123456" class="mt-1 w-full p-2.5 rounded border" onkeydown="if(event.key==='Enter')loginSubmit()"></label>
+    <label class="block text-sm font-semibold">الفرقة
+      <select id="lgYear" class="mt-1 w-full p-2.5 rounded border bg-white"><option value="">اختر الفرقة...</option><option value="1">الفرقة الأولى</option><option value="2">الفرقة الثانية</option><option value="3">الفرقة الثالثة</option><option value="4">الفرقة الرابعة</option></select></label>
+    <div class="bg-red-50 border-2 border-red-500 text-red-700 font-bold rounded-lg p-3 text-sm leading-7">⚠️ بالرجاء الحذر من كتابة الاسم أو الكود بطريقة خاطئة لأنه يحرمك من درجات الأنشطة المعطاة طوال العام</div>
+    <div id="lgErr" class="hidden text-sm text-rose-700 font-bold"></div>
+    <div class="flex gap-2">
+      <button id="lgOk" type="button" onclick="loginSubmit()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2.5 rounded-lg">دخول</button>
+      <button id="lgCancel" type="button" onclick="loginCancel()" class="hidden bg-slate-200 px-5 rounded-lg">إلغاء</button>
+    </div>
+    <button id="lgTeacher" type="button" onclick="loginTeacher()" class="text-xs text-slate-500 underline">دخول المعلم (بدون بيانات طالب)</button>
+  </div>
+</div>
+
+<div id="tOv" class="hidden" style="position:fixed;inset:0;z-index:10010;background:rgba(15,23,42,.75);overflow:auto">
+  <div class="bg-white rounded-xl border border-slate-200 shadow p-5 m-4 max-w-sm mx-auto mt-24 space-y-3" role="dialog" aria-modal="true" aria-labelledby="tT">
+    <h2 id="tT" class="text-lg font-bold text-slate-800"></h2>
+    <p id="tMsg" class="text-sm text-slate-600 leading-6"></p>
+    <input id="tIn" type="password" autocomplete="off" dir="ltr" class="w-full p-2.5 rounded border border-slate-300" onkeydown="if(event.key==='Enter')tSubmit()">
+    <div id="tErr" class="hidden text-sm text-rose-700 font-semibold"></div>
+    <div class="flex gap-2"><button id="tOk" type="button" onclick="tSubmit()" class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 rounded-lg"></button><button type="button" onclick="tClose()" class="bg-slate-100 border border-slate-200 px-4 rounded-lg">إلغاء</button></div>
+  </div>
+</div>
+
+<script>
+const DEF=["النقدية","البنك","رأس المال","الأثاث","المشتريات","المبيعات","العملاء","الموردون","مصروف الأجور"];
+const store={
+  get(k,d){try{return JSON.parse(localStorage.getItem(k))||d}catch(e){return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}if(typeof cloudMarkDirty==='function')cloudMarkDirty(k)}
+};
+let accounts=store.get('acc_list',DEF);
+const TN={A:'أصول',L:'خصوم',E:'حقوق ملكية',R:'إيرادات',X:'مصروفات'};
+const RULE={A:'تزيد بالمدين وتنقص بالدائن',X:'تزيد بالمدين وتنقص بالدائن',L:'تزيد بالدائن وتنقص بالمدين',E:'تزيد بالدائن وتنقص بالمدين',R:'تزيد بالدائن وتنقص بالمدين'};
+const DT={"النقدية":"A","البنك":"A","رأس المال":"E","الأثاث":"A","المشتريات":"X","المبيعات":"R","العملاء":"A","الموردون":"L","مصروف الأجور":"X"};
+let types=Object.assign({},DT,store.get('acc_types',{}));
+const LANG=store.get('acc_lang','ar'),LOC=LANG==='en'?'en-US':'ar-EG';
+const DC={'النقدية':'1101','البنك':'1102','العملاء':'1103','إيرادات مستحقة':'1104','مصروفات مقدمة':'1105','ضريبة مشتريات قابلة للخصم':'1106','الأثاث':'1201','مجمع الإهلاك':'1202','الموردون':'2101','مصروفات مستحقة':'2102','إيرادات مقدمة':'2103','ضريبة مبيعات مستحقة':'2104','رأس المال':'3101','ملخص الدخل':'3102','المبيعات':'4101','المشتريات':'5101','مصروف الأجور':'5102','مصروف الإيجار':'5103','مصروف الإهلاك':'5104','مصروف ديون معدومة':'5105'};
+let codes=Object.assign({},DC,store.get('acc_codes',{}));
+const GRP={'1':'الأصول','11':'الأصول المتداولة','12':'الأصول الثابتة','2':'الخصوم','21':'الخصوم المتداولة','22':'الخصوم طويلة الأجل','3':'حقوق الملكية','4':'الإيرادات','5':'المصروفات'};
+const GRPSEL={'11':'أصول متداولة','12':'أصول ثابتة','21':'خصوم متداولة','22':'خصوم طويلة الأجل','3':'حقوق ملكية','4':'إيرادات','5':'مصروفات'};
+const G2T={'1':'A','2':'L','3':'E','4':'R','5':'X'};
+const GOPTS=Object.entries(GRPSEL).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+const grpOf=a=>{const c=codes[a]||'';return !c?'':(c[0]==='1'||c[0]==='2')?c.slice(0,2):c[0]};
+function autoCode(g){let n=+(g.length===1?g+'101':g+'01');const used=new Set(Object.values(codes));while(used.has(String(n)))n++;return String(n)}
+const byCode=(x,y)=>(codes[x]||'~').localeCompare(codes[y]||'~');
+const sortedAcc=()=>[...accounts].sort(byCode);
+let showCodes=!!store.get('acc_showcodes',false);
+const cp=a=>showCodes&&codes[a]?esc(codes[a])+' - ':'';
+const cf2=a=>showCodes&&codes[a]?`<span class="text-slate-400 text-xs font-mono">${esc(codes[a])}</span> `:'';
+// ترحيل القيود القديمة (طرف مدين واحد ودائن واحد) إلى الشكل الجديد
+let entries=store.get('acc_entries',[]).map(e=>e.debits?e:{id:e.id,date:e.date,desc:e.desc,debits:[{a:e.debit,m:e.amount}],credits:[{a:e.credit,m:e.amount}]});
+
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fmt=n=>n.toLocaleString(LOC,{maximumFractionDigits:2});
+const sum=l=>l.reduce((s,x)=>s+x.m,0);
+const eq=(a,b)=>Math.abs(a-b)<0.005;
+
+function opts(side,sel){
+  return '<option value="">اختر الحساب...</option>'+
+    sortedAcc().map(a=>`<option value="${esc(a)}" ${a===sel?'selected':''}>${cp(a)}${esc(a)}</option>`).join('')+
+    `<option value="__new__">➕ ${side==='d'?'إضافة مدين':'إضافة دائن'}</option>`;
+}
+
+// ===== سطور القيد =====
+function addRow(side){
+  const box=document.getElementById(side+'Rows');
+  const div=document.createElement('div');
+  div.className='row';
+  div.innerHTML=`
+   <div class="flex gap-2">
+     <div class="flex-1 min-w-0">
+       <select data-side="${side}" onchange="onSel(this)" class="acc w-full p-2 rounded border bg-white">${opts(side)}</select>
+       <div class="newbox hidden flex gap-1">
+         <input placeholder="اكتب اسم الحساب الجديد" class="flex-1 min-w-0 p-2 rounded border border-indigo-400" onkeydown="if(event.key==='Enter'){event.preventDefault();confirmNew(this)}">
+         <select class="nt p-2 rounded border bg-white text-sm" title="نوع الحساب">${GOPTS}</select>
+         <button type="button" onclick="confirmNew(this)" class="bg-indigo-600 text-white px-3 rounded">✓</button>
+         <button type="button" onclick="cancelNew(this)" class="bg-slate-300 px-3 rounded">✕</button>
+       </div>
+     </div>
+     <input type="number" min="0" step="0.01" placeholder="المبلغ" class="amt w-28 p-2 rounded border">
+     <button type="button" onclick="delRow(this)" class="text-slate-400 hover:text-red-600 px-1" title="حذف السطر">🗑</button>
+   </div>`;
+  box.appendChild(div);
+}
+function delRow(b){
+  const row=b.closest('.row'),box=row.parentElement;
+  if(box.children.length>1){row.remove();calc()}
+}
+function onSel(sel){
+  if(sel.value!=='__new__'){showHint(sel.value);calc();return}
+  const nb=sel.nextElementSibling;
+  sel.classList.add('hidden');nb.classList.remove('hidden');nb.querySelector('input').focus();
+}
+function confirmNew(el){
+  const nb=el.closest('.newbox'),sel=nb.previousElementSibling,name=nb.querySelector('input').value.trim();
+  if(!name){cancelNew(el);return}
+  if(!accounts.includes(name)){const g=nb.querySelector('.nt').value;accounts.push(name);store.set('acc_list',accounts);types[name]=G2T[g[0]];codes[name]=autoCode(g);store.set('acc_types',types);store.set('acc_codes',codes)}
+  refreshSelects();
+  sel.value=name;showHint(name);
+  nb.querySelector('input').value='';
+  nb.classList.add('hidden');sel.classList.remove('hidden');calc();
+}
+function cancelNew(el){
+  const nb=el.closest('.newbox'),sel=nb.previousElementSibling;
+  nb.classList.add('hidden');sel.classList.remove('hidden');sel.value='';
+}
+function refreshSelects(){
+  document.querySelectorAll('select.acc').forEach(s=>{const v=s.value;s.innerHTML=opts(s.dataset.side,v==='__new__'?'':v)});
+}
+function readRows(side){
+  return [...document.querySelectorAll(`#${side}Rows .row`)].map(r=>({
+    a:r.querySelector('select').value,
+    m:parseFloat(r.querySelector('.amt').value)||0
+  })).filter(x=>x.a&&x.a!=='__new__'&&x.m>0);
+}
+function calc(){
+  const dg=document.getElementById('diag');if(dg)dg.classList.add('hidden');
+  ['d','c'].forEach(k=>{const l=document.getElementById(k+'Lbl');if(l)l.classList.toggle('hidden',readRows(k).length<2)});
+  const d=sum(readRows('d')),c=sum(readRows('c')),st=document.getElementById('status');
+  if(!d&&!c){st.className='text-center font-bold rounded-lg p-2 bg-slate-100';st.textContent='أدخل الحسابات والمبالغ';return}
+  const ok=eq(d,c);
+  st.className='text-center font-bold rounded-lg p-2 '+(ok?'bg-slate-100 text-emerald-700':'bg-slate-100 text-rose-700');
+  st.textContent=`مجموع المدين ${fmt(d)} | مجموع الدائن ${fmt(c)} — ${ok?'القيد متوازن ✅':'القيد غير متوازن ⚠️'}`;
+}
+function saveEntry(e){
+  e.preventDefault();
+  const debits=readRows('d'),credits=readRows('c');
+  if(!debits.length||!credits.length||!eq(sum(debits),sum(credits))||debits.some(x=>credits.some(y=>y.a===x.a))){
+    diagnose();
+    const dg=document.getElementById('diag');
+    dg.scrollIntoView({block:'nearest',behavior:'smooth'});
+    if(dg.animate)dg.animate([{transform:'scale(1.03)'},{transform:'scale(1)'}],{duration:300});
+    return;
+  }
+  entries.push({id:Date.now(),date:date.value,desc:desc.value.trim(),debits,credits});
+  store.set('acc_entries',entries);
+  document.getElementById('dRows').innerHTML='';document.getElementById('cRows').innerHTML='';
+  addRow('d');addRow('c');desc.value='';calc();renderAll();
+}
+function delEntry(id){
+  if(confirm('حذف هذا القيد؟')){entries=entries.filter(e=>e.id!==id);store.set('acc_entries',entries);renderAll()}
+}
+function clearAll(){
+  if(confirm('مسح جميع القيود؟ (دليل الحسابات سيبقى)')){entries=[];store.set('acc_entries',entries);renderAll()}
+}
+function resetAll(){
+  if(!confirm('إعادة ضبط كاملة: سيُحذف كل شيء (القيود والحسابات المضافة والأكواد والجداول المخصصة) ويعود الدليل الافتراضي. متابعة؟'))return;
+  try{['acc_entries','acc_list','acc_types','acc_codes','acc_tables'].forEach(k=>localStorage.removeItem(k))}catch(x){}
+  location.reload();
+}
+function toggleCodes(){
+  showCodes=document.getElementById('codesChk').checked;store.set('acc_showcodes',showCodes);
+  refreshSelects();renderAll();dpFill();
+}
+
+// ===== القائمة الجانبية =====
+function openSidebar(){document.getElementById('sidebar').classList.remove('translate-x-full');document.getElementById('sbBackdrop').classList.remove('hidden')}
+function closeSidebar(){document.getElementById('sidebar').classList.add('translate-x-full');document.getElementById('sbBackdrop').classList.add('hidden')}
+function toggleSidebar(){document.getElementById('sidebar').classList.contains('translate-x-full')?openSidebar():closeSidebar()}
+
+// ===== العرض =====
+function usedAccounts(){return [...new Set(entries.flatMap(e=>[...e.debits,...e.credits].map(x=>x.a)))].sort(byCode)}
+function totals(acc){
+  let d=0,c=0;
+  entries.forEach(e=>{e.debits.forEach(x=>{if(x.a===acc)d+=x.m});e.credits.forEach(x=>{if(x.a===acc)c+=x.m})});
+  return {d,c,bal:d-c};
+}
+function renderJournal(){
+  const q=document.getElementById('q').value.trim(),tb=document.getElementById('jBody');
+  const list=entries.map((e,i)=>({e,i})).filter(({e})=>!q||(e.desc+e.debits.map(x=>x.a)+e.credits.map(x=>x.a)).includes(q));
+  if(!list.length){tb.innerHTML='<tr><td colspan="6" class="p-4 text-center text-slate-400">لا توجد قيود.</td></tr>';return}
+  tb.innerHTML=list.map(({e,i})=>{
+    const out=[];
+    const side=(l,dr)=>{
+      const cls=dr?'text-emerald-700':'text-rose-700 pr-6',w=dr?'من':'إلى',amt=m=>[dr?fmt(m):'',dr?'':fmt(m)];
+      if(l.length>1){
+        out.push([`<span class="${cls} font-bold">${w} مذكورين</span>`,'','']);
+        l.forEach(x=>out.push([`<span class="${cls} pr-4">حـ/ ${esc(x.a)}</span>`,...amt(x.m)]));
+      }else l.forEach(x=>out.push([`<span class="${cls} font-bold">${w} حـ/ ${esc(x.a)}</span>`,...amt(x.m)]));
+    };
+    side(e.debits,true);side(e.credits,false);
+    return out.map((r,k)=>`<tr class="${k?'':'border-t'}"><td class="p-1 text-slate-400">${k?'':i+1}</td><td class="p-1 whitespace-nowrap">${k?'':esc(e.date)}</td><td class="p-1">${r[0]}</td><td class="p-1">${r[1]}</td><td class="p-1">${r[2]}</td><td class="p-1 no-print">${k?'':`<button onclick="editEntry(${e.id})" class="text-indigo-600 mx-1" title="${T2('تعديل القيد','Edit entry')}">✏️</button><button onclick="delEntry(${e.id})" class="text-red-500" title="حذف القيد">🗑</button>`}</td></tr>`).join('')
+      +`<tr><td></td><td></td><td colspan="3" class="px-1 pb-2 text-xs text-slate-500">( ${esc(e.desc)} )</td><td class="no-print"></td></tr>`;
+  }).join('');
+}
+function renderLedger(){
+  const u=usedAccounts(),box=document.getElementById('lBody');
+  if(!u.length){box.innerHTML='<div class="col-span-2 bg-white p-6 rounded-xl text-center text-slate-400 border">سجّل قيداً لتظهر حسابات الأستاذ.</div>';return}
+  box.innerHTML=u.map(acc=>{
+    const t=totals(acc),side=(k)=>entries.flatMap(e=>e[k].filter(x=>x.a===acc).map(x=>`<div class="flex justify-between"><span>${fmt(x.m)}</span><span class="text-xs text-slate-400">${esc(e.date)}</span></div>`)).join('');
+    const bal=t.bal>0?`<span class="text-emerald-700">رصيد مدين ${fmt(t.bal)}</span>`:t.bal<0?`<span class="text-rose-700">رصيد دائن ${fmt(-t.bal)}</span>`:'متوازن (0)';
+    return `<div class="bg-white rounded-xl shadow border overflow-hidden">
+      <div class="bg-slate-800 text-white p-2 text-center font-bold">حـ/ ${cf2(acc)}${esc(acc)}</div>
+      <div class="grid grid-cols-2 text-center font-semibold text-sm bg-slate-50 border-b"><div class="p-1 text-emerald-700">منه (مدين)</div><div class="p-1 text-rose-700">له (دائن)</div></div>
+      <div class="grid grid-cols-2 min-h-[90px] text-sm divide-x divide-x-reverse">
+        <div class="p-2 space-y-1">${side('debits')}</div><div class="p-2 space-y-1">${side('credits')}</div></div>
+      <div class="grid grid-cols-2 text-center text-sm font-bold border-t bg-slate-50"><div class="p-1">${fmt(t.d)}</div><div class="p-1">${fmt(t.c)}</div></div>
+      <div class="p-2 bg-slate-100 border-t flex justify-between font-bold text-sm"><span>الرصيد:</span>${bal}</div></div>`;
+  }).join('');
+}
+function renderTrial(){
+  const u=usedAccounts(),body=document.getElementById('tBody'),foot=document.getElementById('tFoot');
+  if(!u.length){body.innerHTML='<tr><td colspan="3" class="p-4 text-center text-slate-400">لا توجد بيانات.</td></tr>';foot.innerHTML='';return}
+  let sd=0,sc=0;
+  body.innerHTML=u.map(a=>{
+    const b=totals(a).bal,d=b>0?b:0,c=b<0?-b:0;sd+=d;sc+=c;
+    return `<tr class="border-t"><td class="p-2 font-semibold">${cf2(a)}${esc(a)}</td><td class="p-2 text-emerald-700">${d?fmt(d):'-'}</td><td class="p-2 text-rose-700">${c?fmt(c):'-'}</td></tr>`;
+  }).join('');
+  foot.innerHTML=`<tr><td class="p-2">الإجمالي</td><td class="p-2">${fmt(sd)}</td><td class="p-2">${fmt(sc)}</td></tr>
+   <tr><td colspan="3" class="p-2 text-center ${eq(sd,sc)?'text-emerald-700':'text-red-600'}">${eq(sd,sc)?'الميزان متوازن ✅':'الميزان غير متوازن ❌'}</td></tr>`;
+}
+function showHint(a){
+  const h=document.getElementById('hint'),t=types[a];
+  if(!a||!TN[t]){h.classList.add('hidden');return}
+  h.classList.remove('hidden');h.textContent=`💡 ${a} (${TN[t]}): ${RULE[t]}`;
+}
+function setType(s){
+  const a=s.dataset.a;types[a]=s.value;store.set('acc_types',types);
+  if(s.value&&!codes[a]){codes[a]=autoCode({A:'11',L:'21',E:'3',R:'4',X:'5'}[s.value]);store.set('acc_codes',codes);refreshSelects()}
+  renderFin();renderDash();
+}
+function renderFin(){
+  const used=usedAccounts(),un=used.filter(a=>!TN[types[a]]);
+  const typeOpts=Object.entries(TN).map(([k,v])=>`<option value="${k}">${v}</option>`).join('');
+  document.getElementById('finUn').innerHTML=un.length?`<div class="bg-slate-50 border border-amber-300 rounded-xl p-4 text-sm"><b>حسابات غير مصنفة، صنّفها لتظهر في القوائم:</b><div class="mt-2 space-y-2">${un.map(a=>`<div class="flex gap-2 items-center"><span class="font-semibold w-40">${esc(a)}</span><select data-a="${esc(a)}" onchange="setType(this)" class="p-1 rounded border"><option value="">اختر النوع</option>${typeOpts}</select></div>`).join('')}</div></div>`:'';
+  const by={A:[],L:[],E:[],R:[],X:[]};
+  used.forEach(a=>{const t=types[a];if(!by[t])return;const b=totals(a).bal;by[t].push([a,(t==='A'||t==='X')?b:-b])});
+  const tot=k=>by[k].reduce((p,x)=>p+x[1],0);
+  const rows=k=>by[k].map(([a,v])=>`<tr><td class="py-1">${esc(a)}</td><td class="py-1 text-left">${fmt(v)}</td></tr>`).join('');
+  const sec=(title,k)=>`<tr><td colspan="2" class="font-bold pt-3 text-indigo-700">${title}</td></tr>${rows(k)}<tr class="font-bold border-t"><td>إجمالي ${title}</td><td class="text-left">${fmt(tot(k))}</td></tr>`;
+  const ni=tot('R')-tot('X'),eqt=tot('E')+ni,ok=eq(tot('A'),tot('L')+eqt);
+  document.getElementById('isBody').innerHTML=`<table class="w-full">${sec('الإيرادات','R')}${sec('المصروفات','X')}<tr class="font-bold text-lg border-t-2 ${ni>=0?'text-emerald-700':'text-rose-700'}"><td>${ni>=0?'صافي الربح':'صافي الخسارة'}</td><td class="text-left">${fmt(Math.abs(ni))}</td></tr></table>`;
+  document.getElementById('bsBody').innerHTML=`<table class="w-full">${sec('الأصول','A')}${sec('الخصوم','L')}<tr><td colspan="2" class="font-bold pt-3 text-indigo-700">حقوق الملكية</td></tr>${rows('E')}<tr><td class="py-1">${ni>=0?'صافي ربح الفترة':'صافي خسارة الفترة'}</td><td class="py-1 text-left">${fmt(ni)}</td></tr><tr class="font-bold border-t"><td>إجمالي حقوق الملكية</td><td class="text-left">${fmt(eqt)}</td></tr><tr class="font-bold border-t-2"><td>الخصوم + حقوق الملكية</td><td class="text-left">${fmt(tot('L')+eqt)}</td></tr></table><p class="mt-3 font-bold text-center ${ok?'text-emerald-700':'text-rose-700'}">${ok?'الأصول = الخصوم + حقوق الملكية ✅':'المعادلة غير متوازنة ❌ راجع تصنيف الحسابات'}</p>`;
+}
+function backup(){
+  const l=document.createElement('a');
+  l.href=URL.createObjectURL(new Blob([JSON.stringify({accounts,types,codes,entries,tables:customTables})],{type:'application/json'}));
+  l.download='accounting-backup.json';l.click();
+}
+function restore(inp){
+  const f=inp.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{
+    try{
+      const d=JSON.parse(r.result);
+      if(!Array.isArray(d.entries)||!Array.isArray(d.accounts))throw 0;
+      if(!confirm('سيتم استبدال البيانات الحالية. متابعة؟'))return;
+      accounts=d.accounts;types=d.types||{};entries=d.entries;codes=Object.assign({},DC,d.codes||{});store.set('acc_codes',codes);
+      if(Array.isArray(d.tables)){customTables=d.tables;store.set('acc_tables',customTables)}
+      store.set('acc_list',accounts);store.set('acc_types',types);store.set('acc_entries',entries);
+      refreshSelects();renderAll();renderTables();
+    }catch(e){alert(T2('هذا الملف ليس نسخة احتياطية للمنصة، لذلك لم يتم تغيير أي بيانات. لفتح ملفات أخرى (نص، صور، إكسل...) استخدم صفحة الشيتات.','This file is not a platform backup, so nothing was changed. To open other files (text, images, Excel...) use the Assignments page.'))}
+    inp.value='';
+  };
+  r.readAsText(f);
+}
+
+// ===== الجداول المخصصة المرنة =====
+let customTables=store.get('acc_tables',[]);
+let editingTable=null;
+function newTable(){
+  editingTable={id:'T'+Date.now().toString(36)+Math.random().toString(36).slice(2,5),title:'جدول جديد',columns:['البيان','العمود 1','العمود 2'],rows:[['','',''],['','','']]};
+  renderTableEditor();
+  const ed=document.getElementById('tableEditor');if(ed)ed.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function renderTables(){
+  const box=document.getElementById('tablesList');if(!box)return;
+  if(!customTables.length){box.innerHTML='<p class="text-sm text-slate-400">لا توجد جداول مخصصة بعد. اضغط «إنشاء جدول مخصص» للبدء.</p>';return}
+  box.innerHTML=customTables.map(t=>{
+    const cols=t.columns&&t.columns.length?t.columns:[''];
+    return `<div class="border rounded-lg overflow-hidden">
+      <div class="flex flex-wrap items-center justify-between gap-2 bg-slate-50 p-2">
+        <b class="text-slate-800">${esc(t.title)}</b>
+        <div class="flex flex-wrap gap-1">
+          <button onclick="editTable('${t.id}')" class="text-xs bg-white border px-2 py-1 rounded">✏️ تعديل</button>
+          <button onclick="exportTableCsv('${t.id}')" class="text-xs bg-white border px-2 py-1 rounded">📊 CSV</button>
+          <button onclick="duplicateTable('${t.id}')" class="text-xs bg-white border px-2 py-1 rounded">⧉ نسخ</button>
+          <button onclick="delTable('${t.id}')" class="text-xs bg-white border text-red-600 px-2 py-1 rounded">🗑 حذف</button>
+        </div>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-right text-sm">
+          <thead><tr class="bg-slate-100">${cols.map(c=>`<th class="p-2 border border-slate-200 whitespace-nowrap">${esc(c)}</th>`).join('')}</tr></thead>
+          <tbody>${(t.rows||[]).map(r=>`<tr>${cols.map((_,i)=>`<td class="p-2 border border-slate-200 whitespace-nowrap">${esc(r[i]||'')}</td>`).join('')}</tr>`).join('')}</tbody>
+        </table>
+      </div>
+    </div>`;
+  }).join('');
+}
+function renderTableEditor(){
+  const box=document.getElementById('tableEditor');if(!box)return;
+  if(!editingTable){box.classList.add('hidden');box.innerHTML='';return}
+  const t=editingTable;
+  let html=`<div class="flex flex-wrap items-center gap-2 justify-between">
+    <h3 class="font-bold text-lg">✏️ ${esc(t.title||'جدول جديد')}</h3>
+    <div class="flex flex-wrap gap-2">
+      <button onclick="addTableCol()" class="text-xs bg-slate-200 px-3 py-1.5 rounded">➕ عمود</button>
+      <button onclick="addTableRow()" class="text-xs bg-slate-200 px-3 py-1.5 rounded">➕ صف</button>
+      <button onclick="saveTable()" class="text-xs bg-indigo-600 text-white px-3 py-1.5 rounded font-bold">💾 حفظ</button>
+      <button onclick="cancelTable()" class="text-xs bg-slate-100 px-3 py-1.5 rounded border">إلغاء</button>
+    </div>
+  </div>
+  <label class="block text-sm font-semibold">عنوان الجدول
+    <input id="tblTitle" value="${esc(t.title)}" oninput="if(editingTable)editingTable.title=this.value" class="w-full p-2 rounded border mt-1" placeholder="مثال: جدول الإيرادات الشهرية">
+  </label>
+  <div class="overflow-x-auto">
+    <table class="w-full border-collapse">
+      <thead><tr>`;
+  t.columns.forEach((c,ci)=>{
+    html+=`<th class="border border-slate-300 bg-slate-100 min-w-[130px] p-0 align-top">
+      <div class="flex items-center">
+        <input value="${esc(c)}" oninput="updCol(${ci},this.value)" class="flex-1 min-w-0 p-2 bg-transparent font-bold text-sm" placeholder="عنوان العمود">
+        ${t.columns.length>1?`<button type="button" onclick="delTableCol(${ci})" class="px-2 text-slate-400 hover:text-red-600" title="حذف العمود">✕</button>`:''}
+      </div>
+    </th>`;
+  });
+  html+=`<th class="border border-slate-300 bg-slate-100 w-10"></th></tr></thead><tbody>`;
+  t.rows.forEach((row,ri)=>{
+    html+='<tr>';
+    t.columns.forEach((c,ci)=>{
+      html+=`<td class="border border-slate-300 p-0"><input value="${esc(row[ci]||'')}" oninput="updCell(${ri},${ci},this.value)" class="w-full p-2 text-sm" placeholder=""></td>`;
+    });
+    html+=`<td class="border border-slate-300 p-0 text-center"><button type="button" onclick="delTableRow(${ri})" class="text-slate-400 hover:text-red-600 px-2" title="حذف الصف">🗑</button></td>`;
+    html+='</tr>';
+  });
+  html+='</tbody></table></div><p class="text-xs text-slate-500">💡 يمكنك تعديل عناوين الأعمدة مباشرة من الصف الأول، وكتابة أي بيانات في الخلايا دون قيود محاسبية.</p>';
+  box.innerHTML=html;box.classList.remove('hidden');
+}
+function updCol(ci,v){if(editingTable)editingTable.columns[ci]=v}
+function updCell(ri,ci,v){if(editingTable&&editingTable.rows[ri])editingTable.rows[ri][ci]=v}
+function addTableCol(){if(!editingTable)return;editingTable.columns.push('عمود '+(editingTable.columns.length+1));editingTable.rows.forEach(r=>r.push(''));renderTableEditor()}
+function addTableRow(){if(!editingTable)return;editingTable.rows.push(editingTable.columns.map(()=>''));renderTableEditor()}
+function delTableCol(ci){if(!editingTable||editingTable.columns.length<=1)return;editingTable.columns.splice(ci,1);editingTable.rows.forEach(r=>r.splice(ci,1));renderTableEditor()}
+function delTableRow(ri){if(!editingTable||editingTable.rows.length<=1)return;editingTable.rows.splice(ri,1);renderTableEditor()}
+function cancelTable(){editingTable=null;renderTableEditor()}
+function saveTable(){
+  if(!editingTable)return;
+  const title=(editingTable.title||'').trim()||'جدول بدون عنوان';
+  const cols=editingTable.columns.map((c,i)=>(c||'').trim()||('عمود '+(i+1)));
+  const rows=editingTable.rows.map(r=>cols.map((_,i)=>String(r[i]===undefined?'':r[i])));
+  const obj={id:editingTable.id,title,columns:cols,rows,updatedAt:Date.now()};
+  const idx=customTables.findIndex(x=>x.id===obj.id);
+  if(idx>=0)customTables[idx]=obj;else customTables.push(obj);
+  store.set('acc_tables',customTables);
+  editingTable=null;renderTableEditor();renderTables();
+}
+function editTable(id){const t=customTables.find(x=>x.id===id);if(!t)return;editingTable=JSON.parse(JSON.stringify(t));renderTableEditor();const ed=document.getElementById('tableEditor');if(ed)ed.scrollIntoView({behavior:'smooth',block:'start'})}
+function duplicateTable(id){const t=customTables.find(x=>x.id===id);if(!t)return;const c=JSON.parse(JSON.stringify(t));c.id='T'+Date.now().toString(36);c.title=t.title+' (نسخة)';customTables.push(c);store.set('acc_tables',customTables);renderTables()}
+function delTable(id){if(!confirm('حذف هذا الجدول نهائياً؟'))return;customTables=customTables.filter(x=>x.id!==id);store.set('acc_tables',customTables);renderTables()}
+function exportTableCsv(id){
+  const t=customTables.find(x=>x.id===id);if(!t)return;
+  const csv='\ufeff'+[t.columns,...t.rows].map(r=>r.map(c=>'"'+String(c||'').replace(/"/g,'""')+'"').join(',')).join('\n');
+  dlFile(safeName(t.title)+'.csv',csv,'text/csv;charset=utf-8');
+}
+function exportAllTablesXlsx(){
+  if(!customTables.length)return alert('لا توجد جداول مخصصة لتصديرها.');
+  if(!window.XLSX){
+    customTables.forEach(t=>exportTableCsv(t.id));
+    return;
+  }
+  const wb=XLSX.utils.book_new();
+  const usedNames=new Set();
+  customTables.forEach((t,i)=>{
+    let name=String(t.title||('جدول '+(i+1))).replace(/[\\\/\?\*\[\]:]/g,' ').slice(0,31)||('Table'+(i+1));
+    while(usedNames.has(name))name=(name.slice(0,29)+'_'+(i+1)).slice(0,31);
+    usedNames.add(name);
+    const aoa=[t.columns,...t.rows];
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(aoa),name);
+  });
+  wb.Workbook={Views:[{RTL:LANG!=='en'}]};
+  XLSX.writeFile(wb,'custom-tables.xlsx');
+}
+
+// ===== وضع التمارين =====
+const EX=[
+{id:1,lv:1,t:'بدأ المحل نشاطه بإيداع 50,000 ج.م نقداً كرأس مال.',d:[['النقدية',50000]],c:[['رأس المال',50000]],h:'النقدية أصل داخل للمنشأة فتزيد بالمدين، ورأس المال من حقوق الملكية فيزيد بالدائن.'},
+{id:2,lv:1,t:'اشترى المحل أثاثاً بمبلغ 12,000 ج.م نقداً.',d:[['الأثاث',12000]],c:[['النقدية',12000]],h:'الأثاث أصل زاد فيكون مديناً، والنقدية أصل نقص فتكون دائنة.'},
+{id:3,lv:1,t:'دفع المحل أجور العمال 3,000 ج.م نقداً.',d:[['مصروف الأجور',3000]],c:[['النقدية',3000]],h:'المصروفات تزيد بالمدين، والنقدية نقصت فتكون دائنة.'},
+{id:4,lv:2,t:'اشترى المحل بضاعة بمبلغ 20,000 ج.م على الحساب من أحد الموردين.',d:[['المشتريات',20000]],c:[['الموردون',20000]],h:'الشراء الآجل يزيد المشتريات (مدين) ويزيد التزامنا للموردين (خصوم تزيد بالدائن).'},
+{id:5,lv:2,t:'باع المحل بضاعة بمبلغ 15,000 ج.م لأحد العملاء على الحساب.',d:[['العملاء',15000]],c:[['المبيعات',15000]],h:'العملاء أصل (حق لنا) يزيد بالمدين، والمبيعات إيراد يزيد بالدائن.'},
+{id:6,lv:2,t:'سدد المحل 8,000 ج.م من رصيد الموردين بشيك على البنك.',d:[['الموردون',8000]],c:[['البنك',8000]],h:'سداد الدين ينقص الخصوم (مدين) وينقص رصيد البنك (دائن).'},
+{id:7,lv:2,t:'دفع المحل إيجار الشهر 4,000 ج.م من البنك.',d:[['مصروف الإيجار',4000]],c:[['البنك',4000]],h:'الإيجار مصروف يزيد بالمدين، والبنك أصل نقص فيكون دائناً.'},
+{id:8,lv:3,t:'باع المحل بضاعة بمبلغ 30,000 ج.م: استلم 10,000 ج.م نقداً والباقي على الحساب.',d:[['النقدية',10000],['العملاء',20000]],c:[['المبيعات',30000]],h:'قيد مركب: طرفان مدينان (ما استلمناه نقداً وما بقي على العميل) ودائن واحد هو المبيعات.'},
+{id:9,lv:3,t:'اشترى المحل أثاثاً بمبلغ 25,000 ج.م: دفع 5,000 ج.م نقداً و10,000 ج.م بشيك والباقي على الحساب.',d:[['الأثاث',25000]],c:[['النقدية',5000],['البنك',10000],['الموردون',10000]],h:'مدين واحد للأثاث، وأطراف دائنة متعددة بقدر ما دُفع وما بقي ديناً.'},
+{id:10,lv:1,t:"أودع صاحب المحل 30,000 ج.م في حساب المحل بالبنك كرأس مال.",d:[["البنك", 30000]],c:[["رأس المال", 30000]],h:"البنك أصل زاد فيكون مديناً، ورأس المال من حقوق الملكية فيزيد بالدائن."},
+{id:11,lv:1,t:"اشترى المحل سيارة نقل بمبلغ 150,000 ج.م نقداً.",d:[["السيارات", 150000]],c:[["النقدية", 150000]],h:"السيارات أصل ثابت زاد فيكون مديناً، والنقدية نقصت فتكون دائنة."},
+{id:12,lv:1,t:"دفع المحل فاتورة الكهرباء 1,200 ج.م نقداً.",d:[["مصروف الكهرباء", 1200]],c:[["النقدية", 1200]],h:"المصروف يزيد بالمدين، والنقدية نقصت فتكون دائنة."},
+{id:13,lv:1,t:"باع المحل بضاعة نقداً بمبلغ 9,000 ج.م.",d:[["النقدية", 9000]],c:[["المبيعات", 9000]],h:"النقدية زادت (مدين) والمبيعات إيراد يزيد بالدائن."},
+{id:14,lv:1,t:"اشترى المحل بضاعة بمبلغ 7,500 ج.م نقداً.",d:[["المشتريات", 7500]],c:[["النقدية", 7500]],h:"المشتريات تزيد بالمدين، والنقدية نقصت فتكون دائنة."},
+{id:15,lv:1,t:"أودع المحل 10,000 ج.م نقداً في حسابه بالبنك.",d:[["البنك", 10000]],c:[["النقدية", 10000]],h:"تحويل بين أصلين: البنك زاد (مدين) والنقدية نقصت (دائن)."},
+{id:16,lv:1,t:"سحب المحل 5,000 ج.م من البنك للصندوق.",d:[["النقدية", 5000]],c:[["البنك", 5000]],h:"النقدية زادت (مدين) ورصيد البنك نقص (دائن)."},
+{id:17,lv:1,t:"دفع المحل 2,500 ج.م نقداً مصروف إعلان.",d:[["مصروف الإعلان", 2500]],c:[["النقدية", 2500]],h:"الإعلان مصروف يزيد بالمدين، والنقدية دائنة."},
+{id:18,lv:1,t:"حصّل المحل 6,000 ج.م نقداً من أحد العملاء سداداً لجزء من دينه.",d:[["النقدية", 6000]],c:[["العملاء", 6000]],h:"النقدية زادت (مدين)، ورصيد العملاء نقص لأن جزءاً من الدين سُدد (دائن)."},
+{id:19,lv:1,t:"سدد المحل 4,000 ج.م نقداً لأحد الموردين من دينه.",d:[["الموردون", 4000]],c:[["النقدية", 4000]],h:"الموردون خصوم تنقص بالمدين، والنقدية نقصت فتكون دائنة."},
+{id:20,lv:1,t:"أدى المحل خدمة لأحد العملاء وحصل 3,500 ج.م نقداً.",d:[["النقدية", 3500]],c:[["إيراد الخدمات", 3500]],h:"النقدية زادت (مدين)، وإيراد الخدمات يزيد بالدائن."},
+{id:21,lv:1,t:"اشترى المحل أجهزة حاسب بمبلغ 18,000 ج.م بشيك على البنك.",d:[["الأجهزة", 18000]],c:[["البنك", 18000]],h:"الأجهزة أصل زاد (مدين)، والبنك نقص (دائن)."},
+{id:22,lv:1,t:"سحب صاحب المحل 2,000 ج.م نقداً للاستعمال الشخصي.",d:[["المسحوبات", 2000]],c:[["النقدية", 2000]],h:"المسحوبات الشخصية تنقص حقوق الملكية فتُسجل بالمدين، والنقدية دائنة."},
+{id:23,lv:1,t:"دفع المحل مصروف صيانة 800 ج.م نقداً.",d:[["مصروف الصيانة", 800]],c:[["النقدية", 800]],h:"الصيانة مصروف يزيد بالمدين، والنقدية دائنة."},
+{id:24,lv:1,t:"أضاف البنك فوائد دائنة 450 ج.م إلى حساب المحل.",d:[["البنك", 450]],c:[["إيراد الفوائد", 450]],h:"البنك زاد (مدين)، والفوائد المكتسبة إيراد يزيد بالدائن."},
+{id:25,lv:1,t:"حصل المحل على قرض من البنك بمبلغ 40,000 ج.م أودع في حسابه.",d:[["البنك", 40000]],c:[["قرض بنكي", 40000]],h:"البنك أصل زاد (مدين)، والقرض التزام جديد (دائن)."},
+{id:26,lv:1,t:"دفع المحل فاتورة الهاتف 600 ج.م من حسابه بالبنك.",d:[["مصروف الهاتف", 600]],c:[["البنك", 600]],h:"الهاتف مصروف يزيد بالمدين، والبنك نقص (دائن)."},
+{id:27,lv:2,t:"رد المحل بضاعة تالفة بمبلغ 2,000 ج.م إلى مورد كان اشتراها منه على الحساب.",d:[["الموردون", 2000]],c:[["مردودات المشتريات", 2000]],h:"رد البضاعة ينقص التزامنا للمورد (مدين) ويُسجل في مردودات المشتريات (دائن)."},
+{id:28,lv:2,t:"رد أحد العملاء بضاعة بمبلغ 1,500 ج.م كان اشتراها على الحساب.",d:[["مردودات المبيعات", 1500]],c:[["العملاء", 1500]],h:"مردودات المبيعات تخفض الإيراد فتُسجل بالمدين، ورصيد العميل ينقص (دائن)."},
+{id:29,lv:2,t:"سدد عميل 9,800 ج.م نقداً من دين قدره 10,000 ج.م، وسمح له المحل بخصم 200 ج.م.",d:[["النقدية", 9800], ["خصم مسموح به", 200]],c:[["العملاء", 10000]],h:"يُقفل كامل رصيد العميل (دائن)، والخصم المسموح به مصروف (مدين) بجانب ما استُلم نقداً."},
+{id:30,lv:2,t:"سدد المحل 20,000 ج.م لأحد الموردين بدفع 19,500 ج.م نقداً مع حصوله على خصم 500 ج.م.",d:[["الموردون", 20000]],c:[["النقدية", 19500], ["خصم مكتسب", 500]],h:"يُقفل كامل دين المورد (مدين)، والخصم المكتسب إيراد (دائن) بجانب النقدية المدفوعة."},
+{id:31,lv:2,t:"اشترى المحل بضاعة بمبلغ 10,000 ج.م ودفع مصروف نقلها 500 ج.م، وسدد المبلغين نقداً.",d:[["المشتريات", 10000], ["مصروف النقل", 500]],c:[["النقدية", 10500]],h:"مدينان: المشتريات ومصروف النقل، ودائن واحد هو إجمالي النقدية المدفوعة."},
+{id:32,lv:2,t:"سحب صاحب المحل بضاعة تكلفتها 3,000 ج.م للاستعمال الشخصي.",d:[["المسحوبات", 3000]],c:[["المشتريات", 3000]],h:"سحب البضاعة للاستعمال الشخصي مسحوبات (مدين) ويخفض المشتريات (دائن)."},
+{id:33,lv:2,t:"حرر المحل ورقة دفع بمبلغ 15,000 ج.م لصالح أحد الموردين سداداً لدينه.",d:[["الموردون", 15000]],c:[["أوراق الدفع", 15000]],h:"دين المورد ينقص (مدين) ويتحول إلى ورقة دفع التزام (دائن)."},
+{id:34,lv:2,t:"استلم المحل ورقة قبض بمبلغ 8,000 ج.م من أحد العملاء سداداً لدينه.",d:[["أوراق القبض", 8000]],c:[["العملاء", 8000]],h:"ورقة القبض أصل جديد (مدين) وينقص رصيد العميل (دائن)."},
+{id:35,lv:2,t:"سدد المحل ورقة الدفع البالغة 15,000 ج.م بشيك على البنك عند حلول أجلها.",d:[["أوراق الدفع", 15000]],c:[["البنك", 15000]],h:"ورقة الدفع التزام ينقص (مدين)، والبنك ينقص (دائن)."},
+{id:36,lv:2,t:"حصل المحل قيمة ورقة قبض 8,000 ج.م في حسابه بالبنك عند الاستحقاق.",d:[["البنك", 8000]],c:[["أوراق القبض", 8000]],h:"البنك زاد (مدين)، وورقة القبض سُددت فتنقص (دائن)."},
+{id:37,lv:2,t:"دفع المحل إيجار ثلاثة أشهر مقدماً بمبلغ 9,000 ج.م نقداً.",d:[["مصروفات مقدمة", 9000]],c:[["النقدية", 9000]],h:"ما دُفع عن فترات قادمة أصل (مصروفات مقدمة) يزيد بالمدين، والنقدية دائنة."},
+{id:38,lv:2,t:"استحق على المحل أجور عمال بمبلغ 5,000 ج.م لم تُدفع بعد.",d:[["مصروف الأجور", 5000]],c:[["مصروفات مستحقة", 5000]],h:"المصروف يُسجل في الفترة التي حدث فيها (مدين) وما لم يُدفع التزام (مصروفات مستحقة - دائن)."},
+{id:39,lv:2,t:"استلم المحل 12,000 ج.م نقداً إيجاراً مقدماً عن شهور قادمة.",d:[["النقدية", 12000]],c:[["إيرادات مقدمة", 12000]],h:"ما استُلم عن فترات قادمة التزام (إيرادات مقدمة) يزيد بالدائن، والنقدية مدينة."},
+{id:40,lv:2,t:"سدد المحل قسطاً من القرض 5,000 ج.م مع فائدة 500 ج.م بشيك على البنك.",d:[["قرض بنكي", 5000], ["مصروف الفوائد", 500]],c:[["البنك", 5500]],h:"القرض ينقص بالمدين والفائدة مصروف مدين، والبنك دائن بإجمالي المدفوع."},
+{id:41,lv:2,t:"دفع المحل أقساط تأمين سنوية على المخزن بمبلغ 6,000 ج.م بشيك على البنك.",d:[["مصروف التأمين", 6000]],c:[["البنك", 6000]],h:"التأمين مصروف (مدين) والبنك نقص (دائن)."},
+{id:42,lv:2,t:"اشترى المحل آلات بمبلغ 45,000 ج.م على الحساب من أحد الموردين.",d:[["الآلات", 45000]],c:[["الموردون", 45000]],h:"الآلات أصل ثابت زاد (مدين)، والشراء الآجل يزيد التزامنا للموردين (دائن)."},
+{id:43,lv:3,t:"باع المحل بضاعة بمبلغ 30,000 ج.م على الحساب مع ضريبة مبيعات 14% (4,200 ج.م).",d:[["العملاء", 34200]],c:[["المبيعات", 30000], ["ضريبة مبيعات مستحقة", 4200]],h:"العميل يلتزم بالمبلغ شاملاً الضريبة (مدين)، والضريبة المحصلة التزام للدولة (دائن) منفصل عن المبيعات."},
+{id:44,lv:3,t:"اشترى المحل بضاعة بمبلغ 20,000 ج.م مع ضريبة 14% (2,800 ج.م) ودفع الإجمالي نقداً.",d:[["المشتريات", 20000], ["ضريبة مشتريات قابلة للخصم", 2800]],c:[["النقدية", 22800]],h:"الضريبة المدفوعة تُخصم لاحقاً فهي أصل (مدين) منفصل عن المشتريات، والنقدية دائنة بالإجمالي."},
+{id:45,lv:3,t:"سدد المحل لمصلحة الضرائب صافي الضريبة: ضريبة مبيعات مستحقة 4,200 ج.م مخصوماً منها ضريبة مشتريات 2,800 ج.م، بشيك على البنك.",d:[["ضريبة مبيعات مستحقة", 4200]],c:[["ضريبة مشتريات قابلة للخصم", 2800], ["البنك", 1400]],h:"يُقفل الحسابان الضريبيان، والفرق (4,200 - 2,800 = 1,400) يُدفع بالبنك."},
+{id:46,lv:3,t:"بدأ صاحب المشروع نشاطه بـ 100,000 ج.م نقداً وأثاث قيمته 30,000 ج.م وسيارة قيمتها 70,000 ج.م.",d:[["النقدية", 100000], ["الأثاث", 30000], ["السيارات", 70000]],c:[["رأس المال", 200000]],h:"كل ما قدمه المالك أصول (مدين)، ومجموعها هو رأس المال (دائن)."},
+{id:47,lv:3,t:"اشترى المحل أرضاً بمبلغ 300,000 ج.م: دفع 100,000 ج.م بشيك والباقي بقرض من البنك.",d:[["الأراضي", 300000]],c:[["البنك", 100000], ["قرض بنكي", 200000]],h:"الأرض أصل زاد بكامل ثمنها (مدين)، ويقابلها ما دُفع من البنك وما اقتُرض (دائن)."},
+{id:48,lv:3,t:"اشترى المحل بضاعة بمبلغ 50,000 ج.م: دفع 20,000 ج.م نقداً، وحرر ورقة دفع بـ 10,000 ج.م، والباقي على الحساب.",d:[["المشتريات", 50000]],c:[["النقدية", 20000], ["أوراق الدفع", 10000], ["الموردون", 20000]],h:"مدين واحد للمشتريات، وثلاثة أطراف دائنة: النقدية وأوراق الدفع والباقي للموردين."},
+{id:49,lv:3,t:"سجل المحل إهلاك السيارات عن السنة بمبلغ 15,000 ج.م.",d:[["مصروف الإهلاك", 15000]],c:[["مجمع الإهلاك", 15000]],h:"الإهلاك مصروف (مدين)، ولا يُخفض الأصل مباشرة بل يُسجل في مجمع الإهلاك (دائن)."},
+{id:50,lv:3,t:"تأكد المحل أن دين أحد العملاء 2,500 ج.م لن يُحصل فاعتبره ديناً معدوماً.",d:[["مصروف ديون معدومة", 2500]],c:[["العملاء", 2500]],h:"الدين المعدوم خسارة (مصروف - مدين) وينقص رصيد العملاء (دائن)."},
+{id:51,lv:3,t:"سدد عميل دينه 10,000 ج.م: 4,000 ج.م نقداً و6,000 ج.م بشيك أودعه المحل في البنك.",d:[["النقدية", 4000], ["البنك", 6000]],c:[["العملاء", 10000]],h:"أصلان زادا (النقدية والبنك - مدين)، ودين العميل أُقفل (دائن)."},
+{id:52,lv:3,t:"دفع المحل أجور شهر 8,000 ج.م نقداً، منها 3,000 ج.م كانت مستحقة من الشهر السابق.",d:[["مصروف الأجور", 5000], ["مصروفات مستحقة", 3000]],c:[["النقدية", 8000]],h:"الجزء المستحق سابقاً يُقفل من المصروفات المستحقة (مدين) والباقي مصروف الفترة (مدين)، والنقدية دائنة بالإجمالي."},
+{id:53,lv:3,t:"باع المحل بضاعة بمبلغ 25,000 ج.م: استلم 5,000 ج.م نقداً و10,000 ج.م بشيك أودعه بالبنك، والباقي بورقة قبض.",d:[["النقدية", 5000], ["البنك", 10000], ["أوراق القبض", 10000]],c:[["المبيعات", 25000]],h:"ثلاثة أطراف مدينة بقدر ما استُلم بكل وسيلة، ودائن واحد هو المبيعات."},
+{id:54,lv:3,t:"سحب صاحب المحل 10,000 ج.م للاستعمال الشخصي: 4,000 ج.م نقداً و6,000 ج.م بشيك على البنك.",d:[["المسحوبات", 10000]],c:[["النقدية", 4000], ["البنك", 6000]],h:"المسحوبات (مدين) مقابل نقص النقدية والبنك (دائن)."},
+{id:55,lv:3,t:"زاد صاحب المحل رأس المال بإيداع 40,000 ج.م في البنك وإضافة أجهزة قيمتها 20,000 ج.م.",d:[["البنك", 40000], ["الأجهزة", 20000]],c:[["رأس المال", 60000]],h:"الأصول المضافة (مدين) تزيد رأس المال (دائن) بمجموعها."},
+{id:56,lv:3,t:"أدى المحل خدمات بمبلغ 18,000 ج.م: حصل 6,000 ج.م نقداً والباقي على الحساب.",d:[["النقدية", 6000], ["العملاء", 12000]],c:[["إيراد الخدمات", 18000]],h:"الإيراد يُسجل كاملاً (دائن)، وما لم يُحصل يصبح مديونية على العملاء (مدين)."},
+{id:57,lv:3,t:"في نهاية الفترة، تبين أن 3,000 ج.م من الإيجار المدفوع مقدماً (9,000 ج.م) أصبحت مصروفاً عن الفترة.",d:[["مصروف الإيجار", 3000]],c:[["مصروفات مقدمة", 3000]],h:"جزء من المصروف المقدم استُهلك فيتحول لمصروف (مدين) وينقص الأصل (دائن)."},
+{id:58,lv:3,t:"في نهاية الفترة، تبين أن 4,000 ج.م من الإيجار المقبوض مقدماً (12,000 ج.م) أصبحت إيراداً مكتسباً.",d:[["إيرادات مقدمة", 4000]],c:[["إيراد إيجار", 4000]],h:"ينقص الالتزام (إيرادات مقدمة - مدين) ويثبت الإيراد المكتسب (دائن)."},
+{id:59,lv:3,t:"استحقت على المحل فوائد قرض 1,200 ج.م لم تُدفع بعد.",d:[["مصروف الفوائد", 1200]],c:[["مصروفات مستحقة", 1200]],h:"مصروف الفوائد (مدين) والتزام بما لم يُدفع (مصروفات مستحقة - دائن)."},
+{id:60,lv:3,t:"رد المحل بضاعة مشتراة بمبلغ 5,000 ج.م مع ضريبة 14% (700 ج.م) إلى مورد كان اشتراها منه على الحساب.",d:[["الموردون", 5700]],c:[["مردودات المشتريات", 5000], ["ضريبة مشتريات قابلة للخصم", 700]],h:"ينقص دين المورد بالإجمالي (مدين)، وتُعكس البضاعة والضريبة التي سبق خصمها (دائن)."}
+];
+const LV={1:['مبتدئ',10],2:['متوسط',20],3:['متقدم',30]};
+let prog=store.get('acc_prog',{}),qh=store.get('acc_quiz',[]),cur=null,hintUsed=false,solShown=false,att=0,quiz=null;
+const rank=p=>p>=600?'خبير محاسبة 🏆':p>=300?'محاسب ماهر ⭐':p>=100?'محاسب ناشئ 📘':'مبتدئ 🌱';
+const sum2=o=>Object.values(o).reduce((p,q)=>p+q,0);
+const exAcc=()=>[...new Set([...accounts,...EX.flatMap(x=>[...x.d,...x.c].map(y=>y[0]))])];
+const exPanel=()=>document.getElementById('exSolve');
+
+function renderEx(){
+  const pts=Object.values(prog).reduce((p,x)=>p+(x.pts||0),0);
+  document.getElementById('exProg').innerHTML=`<div class="bg-white rounded-xl p-5 shadow-sm border space-y-3">
+   <div class="flex flex-wrap justify-between items-center gap-2"><div><div class="text-2xl font-bold">${pts} نقطة</div><div class="text-indigo-700 font-bold">${rank(pts)}</div></div>
+   <div class="flex gap-2 items-center"><button onclick="startQuiz()" class="bg-indigo-600 text-white font-bold px-4 py-2 rounded-lg">🎯 اختبار سريع (5 أسئلة)</button><button onclick="resetProg()" class="text-xs bg-slate-50 text-red-700 px-3 py-2 rounded border border-red-300">إعادة ضبط</button></div></div>
+   ${[1,2,3].map(lv=>{const n=EX.filter(x=>x.lv===lv).length,d=EX.filter(x=>x.lv===lv&&prog[x.id]).length;return `<div><div class="flex justify-between text-sm"><span>${LV[lv][0]}</span><span>${d}/${n}</span></div><div class="h-2 bg-slate-200 rounded"><div class="h-2 bg-indigo-500 rounded" style="width:${d/n*100}%"></div></div></div>`}).join('')}
+   ${qh.length?`<div class="text-xs text-slate-600">آخر الاختبارات: ${qh.slice(0,3).map(q=>`${q.s}/${q.n} (${esc(q.d)})`).join(' • ')}</div>`:''}</div>`;
+  document.getElementById('exList').innerHTML=[1,2,3].map(lv=>`<div><h3 class="font-bold text-slate-700 mb-2">${LV[lv][0]} — ${LV[lv][1]} نقطة للتمرين</h3><div class="grid md:grid-cols-2 gap-3">${EX.filter(x=>x.lv===lv).map(x=>`<button onclick="pick(${x.id})" class="text-right bg-white border rounded-lg p-3 hover:bg-indigo-50 ${prog[x.id]?'border-indigo-300':''}">${prog[x.id]?'✅ ':''}<b>تمرين ${x.id}:</b> ${esc(x.t)}</button>`).join('')}</div></div>`).join('');
+}
+function resetProg(){if(confirm('مسح كل النقاط ونتائج الاختبارات؟')){prog={};qh=[];store.set('acc_prog',prog);store.set('acc_quiz',qh);renderEx()}}
+function pick(id){quiz=null;openEx(id)}
+function openEx(id){
+  cur=EX.find(x=>x.id===id);hintUsed=false;solShown=false;att=0;
+  const opts='<option value="">الحساب...</option>'+exAcc().map(a=>`<option>${esc(a)}</option>`).join('');
+  const rows=sd=>[0,1,2].map(()=>`<div class="flex gap-2"><select class="xa flex-1 min-w-0 p-2 rounded border bg-white" data-s="${sd}">${opts}</select><input type="number" min="0" step="0.01" placeholder="المبلغ" class="xm w-28 p-2 rounded border" data-s="${sd}"></div>`).join('');
+  const P=exPanel();
+  P.innerHTML=`<div class="bg-white rounded-xl p-5 shadow-sm border space-y-3">
+   <div class="text-sm text-slate-500">${quiz?`اختبار سريع: سؤال ${quiz.i+1} / ${quiz.ids.length}`:'تمرين '+cur.id+' — '+LV[cur.lv][0]}</div>
+   <p class="font-bold text-lg">${esc(cur.t)}</p>
+   <div class="grid md:grid-cols-2 gap-3">
+     <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2"><b class="text-emerald-700">من حـ/ (مدين)</b>${rows('d')}</div>
+     <div class="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-2"><b class="text-rose-700">إلى حـ/ (دائن)</b>${rows('c')}</div>
+   </div>
+   <div id="exFb" class="rounded-lg p-3 text-sm hidden"></div>
+   <div id="exBtns" class="flex flex-wrap gap-2">
+     <button id="exChk" onclick="checkEx()" class="bg-indigo-600 text-white font-bold px-4 py-2 rounded">تحقق ✔</button>
+     ${quiz?'':'<button onclick="hintEx()" class="bg-slate-100 text-slate-700 px-4 py-2 rounded border border-amber-300">💡 تلميح</button><button onclick="solEx()" class="bg-slate-200 px-4 py-2 rounded">👁 عرض الحل</button>'}
+     <button onclick="closeEx()" class="bg-slate-100 px-4 py-2 rounded border">إغلاق</button>
+   </div></div>`;
+  P.classList.remove('hidden');P.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function closeEx(){if(quiz&&!confirm('إنهاء الاختبار؟ لن تُسجَّل النتيجة.'))return;quiz=null;exPanel().classList.add('hidden')}
+function readAns(sd){
+  const A=[...document.querySelectorAll(`#exSolve .xa[data-s="${sd}"]`)],M=[...document.querySelectorAll(`#exSolve .xm[data-s="${sd}"]`)],o={};
+  A.forEach((x,i)=>{const v=parseFloat(M[i].value)||0;if(x.value&&v>0)o[x.value]=(o[x.value]||0)+v});
+  return o;
+}
+function grade(){
+  const sol={d:Object.fromEntries(cur.d),c:Object.fromEntries(cur.c)},ans={d:readAns('d'),c:readAns('c')},msg=[],nm={d:'المدين',c:'الدائن'};
+  if(!Object.keys(ans.d).length||!Object.keys(ans.c).length)return ['اكتب طرفاً مديناً وآخر دائناً مع المبالغ.'];
+  if(!eq(sum2(ans.d),sum2(ans.c)))msg.push('القيد غير متوازن: مجموع المدين لا يساوي مجموع الدائن.');
+  for(const sd of ['d','c']){
+    const o=sd==='d'?'c':'d';
+    for(const a in sol[sd]){
+      if(ans[sd][a]===undefined)msg.push(ans[o][a]!==undefined?`حساب ${a} في الجانب الخطأ، مكانه ${nm[sd]}.`:`ينقصك حساب ${a} في الجانب ${nm[sd]}.`);
+      else if(!eq(ans[sd][a],sol[sd][a]))msg.push(`مبلغ حساب ${a} غير صحيح.`);
+    }
+    for(const a in ans[sd])if(sol[sd][a]===undefined&&sol[o][a]===undefined)msg.push(`حساب ${a} غير مطلوب في هذا القيد.`);
+  }
+  return msg;
+}
+const solText=()=>cur.d.map(([a,m])=>`من حـ/ ${a} ${fmt(m)}`).join(' + ')+'  ←  '+cur.c.map(([a,m])=>`إلى حـ/ ${a} ${fmt(m)}`).join(' + ');
+function fbShow(cls,html){const f=document.getElementById('exFb');f.className='rounded-lg p-3 text-sm '+cls;f.innerHTML=html}
+function hintEx(){hintUsed=true;fbShow('bg-slate-50 text-slate-800 border border-amber-300','💡 '+esc(cur.h)+'<br><small>(استخدام التلميح يخصم نصف النقاط)</small>')}
+function solEx(){solShown=true;fbShow('bg-slate-100 text-slate-800',esc(solText())+'<br><small>(بعد عرض الحل لا تُحتسب نقاط لهذه المحاولة)</small>')}
+function lockEx(){
+  document.querySelectorAll('#exSolve select,#exSolve input').forEach(x=>x.disabled=true);
+  document.getElementById('exChk').disabled=true;
+  document.getElementById('exBtns').insertAdjacentHTML('afterbegin',`<button onclick="quizNext()" class="bg-indigo-600 text-white font-bold px-4 py-2 rounded">${quiz.i+1>=quiz.ids.length?'عرض النتيجة':'التالي ▶'}</button>`);
+}
+function checkEx(){
+  const msg=grade();att++;
+  if(msg.length){
+    fbShow('bg-slate-100 text-rose-700','❌ راجع الآتي:<ul class="list-disc pr-5">'+msg.map(m=>`<li>${esc(m)}</li>`).join('')+'</ul>'+(quiz?'<b>الحل الصحيح:</b> '+esc(solText()):''));
+    if(quiz)lockEx();
+    return;
+  }
+  if(quiz){quiz.score++;fbShow('bg-slate-100 text-emerald-700 font-bold','✅ إجابة صحيحة!');lockEx();return}
+  const base=LV[cur.lv][1],pts=hintUsed||att>1?Math.ceil(base/2):base,first=!prog[cur.id]&&!solShown;
+  if(first){prog[cur.id]={pts,att};store.set('acc_prog',prog)}
+  fbShow('bg-slate-100 text-emerald-700 font-bold','✅ إجابة صحيحة! '+(first?'+'+pts+' نقطة':solShown?'(لا نقاط بعد عرض الحل)':'(سبق حله)'));
+  renderEx();
+}
+function startQuiz(){
+  const ids=[...EX].sort(()=>Math.random()-.5).slice(0,5).map(x=>x.id);
+  quiz={ids,i:0,score:0};openEx(ids[0]);
+}
+function quizNext(){
+  quiz.i++;
+  if(quiz.i<quiz.ids.length){openEx(quiz.ids[quiz.i]);return}
+  const n=quiz.ids.length,sc=quiz.score,pc=Math.round(sc/n*100);
+  qh.unshift({d:new Date().toLocaleDateString(LOC),s:sc,n});qh=qh.slice(0,10);store.set('acc_quiz',qh);
+  exPanel().innerHTML=`<div class="bg-white rounded-xl p-6 shadow-sm border text-center space-y-2"><div class="text-3xl font-bold">${sc} / ${n}</div><div class="font-bold ${pc>=60?'text-emerald-700':'text-rose-700'}">${pc>=80?'ممتاز! 🌟':pc>=60?'جيد، استمر 👍':'راجع التمارين وجرّب مرة أخرى 📚'}</div><button onclick="closeEx()" class="bg-indigo-600 text-white px-4 py-2 rounded">إغلاق</button></div>`;
+  quiz=null;renderEx();
+}
+
+// ===== تسويات وأدوات =====
+const G=id=>document.getElementById(id);
+const sm=l=>l.reduce((p,x)=>p+x[1],0),R2=x=>Math.round(x*100)/100;
+let idc=0;
+const TT={'مصروف الإهلاك':'X','مجمع الإهلاك':'A','مصروفات مستحقة':'L','مصروفات مقدمة':'A','إيرادات مستحقة':'A','إيرادات مقدمة':'L','مصروف ديون معدومة':'X','ملخص الدخل':'E','ضريبة مبيعات مستحقة':'L','ضريبة مشتريات قابلة للخصم':'A'};
+function ensure(n,t,g){
+  if(accounts.includes(n))return;
+  accounts.push(n);types[n]=t;store.set('acc_list',accounts);store.set('acc_types',types);
+  if(!codes[n])codes[n]=autoCode(g||({A:'11',L:'21',E:'3',R:'4',X:'5'})[t]||'11');
+  store.set('acc_codes',codes);refreshSelects();
+}
+function post(desc,D,C,dt){
+  const f=l=>l.filter(x=>x[1]>0).map(x=>({a:x[0],m:R2(x[1])})),d=f(D),c=f(C);
+  if(!d.length||!c.length||!eq(sum(d),sum(c)))return false;
+  entries.push({id:Date.now()+(idc++),date:dt||new Date().toISOString().slice(0,10),desc,debits:d,credits:c});
+  store.set('acc_entries',entries);return true;
+}
+const accOpts=t=>accounts.filter(a=>!t||types[a]===t).map(a=>`<option>${esc(a)}</option>`).join('');
+
+// أرصدة أول المدة
+function renderTools(){
+  G('opBody').innerHTML=accounts.map(a=>['d','c'].reduce((h,s)=>h+`<td><input type="number" min="0" step="0.01" data-a="${esc(a)}" data-s="${s}" class="op w-28 p-1 rounded border"></td>`,`<tr><td class="p-1">${esc(a)}</td>`)+'</tr>').join('');
+  opCalc();
+  const cb=G('cbSel'),v=cb.value;cb.innerHTML=accOpts();
+  cb.value=accounts.includes(v)?v:(accounts.includes('النقدية')?'النقدية':accounts[0]);cashBook();renderCoa();dpFill();
+}
+function readOp(){const D=[],C=[];document.querySelectorAll('.op').forEach(x=>{const v=parseFloat(x.value)||0;if(v>0)(x.dataset.s==='d'?D:C).push([x.dataset.a,v])});return [D,C]}
+function opCalc(){const [D,C]=readOp(),d=sm(D),c=sm(C);G('opSt').textContent=(d||c)?`مدين ${fmt(d)} | دائن ${fmt(c)} — ${eq(d,c)?'متوازن ✅':'غير متوازن ⚠️'}`:''}
+function doOpen(){
+  const [D,C]=readOp();
+  if(D.some(x=>C.some(y=>y[0]===x[0])))return alert('لا يظهر الحساب نفسه في المدين والدائن.');
+  if(!post('قيد افتتاحي (أرصدة أول المدة)',D,C))return alert('القيد غير متوازن أو فارغ.');
+  renderAll();renderTools();alert('تم ترحيل القيد الافتتاحي.');
+}
+
+// التسويات
+const TPL={
+ dep:{n:'إهلاك أصل',F:[['تكلفة الأصل',''],['نسبة الإهلاك السنوية %','10'],['عدد الأشهر','12']],A:null,b:v=>{const m=v[0]*v[1]/100*v[2]/12;return [[['مصروف الإهلاك',m]],[['مجمع الإهلاك',m]]]}},
+ acc:{n:'مصروف مستحق (لم يُدفع)',F:[['المبلغ','']],A:['X','حساب المصروف'],b:(v,a)=>[[[a,v[0]]],[['مصروفات مستحقة',v[0]]]]},
+ pre:{n:'مصروف مدفوع مقدماً (يخص فترة قادمة)',F:[['الجزء المقدم','']],A:['X','حساب المصروف'],b:(v,a)=>[[['مصروفات مقدمة',v[0]]],[[a,v[0]]]]},
+ racc:{n:'إيراد مستحق (لم يُحصَّل)',F:[['المبلغ','']],A:['R','حساب الإيراد'],b:(v,a)=>[[['إيرادات مستحقة',v[0]]],[[a,v[0]]]]},
+ rpre:{n:'إيراد محصَّل مقدماً (يخص فترة قادمة)',F:[['الجزء المقدم','']],A:['R','حساب الإيراد'],b:(v,a)=>[[[a,v[0]]],[['إيرادات مقدمة',v[0]]]]},
+ bad:{n:'ديون معدومة',F:[['المبلغ','']],A:null,b:v=>[[['مصروف ديون معدومة',v[0]]],[['العملاء',v[0]]]]}
+};
+function adjUI(){
+  const t=TPL[G('adjT').value];
+  G('adjF').innerHTML=t.F.map(([l,d])=>`<label class="text-sm">${l}<input type="number" step="0.01" min="0" value="${d}" class="af w-full p-2 rounded border"></label>`).join('')+(t.A?`<label class="text-sm">${t.A[1]}<select id="adjA" class="w-full p-2 rounded border bg-white">${accOpts(t.A[0])}</select></label>`:'');
+}
+function doAdj(){
+  const t=TPL[G('adjT').value],v=[...document.querySelectorAll('.af')].map(x=>parseFloat(x.value)||0),a=G('adjA')?G('adjA').value:'';
+  if(t.A&&!a)return alert('اختر الحساب.');
+  const [D,C]=t.b(v,a);
+  [...D,...C].forEach(x=>ensure(x[0],TT[x[0]]||'A'));
+  if(!post('قيد تسوية: '+t.n,D,C))return alert('أدخل مبلغاً صحيحاً.');
+  renderAll();alert('تم تسجيل قيد التسوية.');
+}
+
+// الإقفال
+function closeBooks(){
+  if(!confirm('سيتم إنشاء قيود الإقفال. تأكد من تسجيل التسويات وطباعة قائمة الدخل أولاً. متابعة؟'))return;
+  const used=usedAccounts(),grp=t=>used.filter(a=>types[a]===t).map(a=>[a,totals(a).bal]).filter(x=>Math.abs(x[1])>=0.005);
+  const Rv=grp('R'),Ex=grp('X'),S='ملخص الدخل';
+  if(!Rv.length&&!Ex.length)return alert('لا توجد إيرادات أو مصروفات للإقفال.');
+  ensure(S,'E');ensure('رأس المال','E');
+  const close=(L,d)=>{
+    if(!L.length)return;
+    const D=[],C=[];L.forEach(([a,b])=>b>0?C.push([a,b]):D.push([a,-b]));
+    const net=sm(D)-sm(C);if(net>0)C.push([S,net]);else D.push([S,-net]);
+    post(d,D,C);
+  };
+  close(Rv,'قيد إقفال الإيرادات في ملخص الدخل');close(Ex,'قيد إقفال المصروفات في ملخص الدخل');
+  const ni=-sm(Rv)-sm(Ex);
+  if(ni>0.005)post('قيد إقفال ملخص الدخل في رأس المال (صافي الربح)',[[S,ni]],[['رأس المال',ni]]);
+  else if(ni<-0.005)post('قيد إقفال ملخص الدخل في رأس المال (صافي الخسارة)',[['رأس المال',-ni]],[[S,-ni]]);
+  renderAll();alert('تم إنشاء قيود الإقفال.');
+}
+
+// الضريبة
+function vatCalc(){
+  const A=parseFloat(G('vA').value)||0,r=(parseFloat(G('vT').value)||0)/100,gross=G('vM').value==='g';
+  const net=R2(gross?A/(1+r):A),vat=gross?R2(A-net):R2(net*r);
+  G('vR').textContent=A?`قبل الضريبة: ${fmt(net)} | الضريبة: ${fmt(vat)} | الإجمالي: ${fmt(net+vat)}`:'';
+  return [net,vat];
+}
+function doVat(){
+  const [net,vat]=vatCalc();if(!(net>0))return alert('أدخل المبلغ.');
+  const sale=G('vK').value==='s',cash=G('vP').value==='c',party=cash?'النقدية':(sale?'العملاء':'الموردون'),gross=net+vat;
+  const need={'المبيعات':'R','المشتريات':'X','ضريبة مبيعات مستحقة':'L','ضريبة مشتريات قابلة للخصم':'A'};
+  Object.entries(need).forEach(([n,t])=>ensure(n,t));ensure(party,'A');
+  const ok=sale?post('بيع بضريبة القيمة المضافة',[[party,gross]],[['المبيعات',net],['ضريبة مبيعات مستحقة',vat]])
+    :post('شراء بضريبة القيمة المضافة',[['المشتريات',net],['ضريبة مشتريات قابلة للخصم',vat]],[[party,gross]]);
+  if(!ok)return alert('تعذر تسجيل القيد.');
+  renderAll();alert('تم تسجيل القيد.');
+}
+
+// تسوية البنك
+const BR=[['bs','رصيد كشف البنك'],['bk','رصيد البنك بالدفاتر'],['dep','+ إيداعات في الطريق (لم تظهر بالكشف)'],['int','+ فوائد دائنة / تحصيلات لم تُسجَّل بالدفاتر'],['out','− شيكات صادرة لم تُصرف'],['fee','− رسوم وعمولات بنكية لم تُسجَّل'],['bnc','− شيكات مرتدة']];
+function brCalc(){
+  const v=Object.fromEntries(BR.map(([k])=>[k,parseFloat(G('br_'+k).value)||0])),ab=v.bs+v.dep-v.out,ak=v.bk+v.int-v.fee-v.bnc,ok=eq(ab,ak);
+  G('brR').innerHTML=`<div>الرصيد المعدَّل حسب الكشف: <b>${fmt(ab)}</b></div><div>الرصيد المعدَّل حسب الدفاتر: <b>${fmt(ak)}</b></div><div class="font-bold ${ok?'text-emerald-700':'text-rose-700'}">${ok?'التسوية صحيحة ✅':'فرق قدره '+fmt(Math.abs(ab-ak))+' ❌ راجع البنود'}</div>`;
+}
+function brFill(){G('br_bk').value=totals('البنك').bal;brCalc()}
+
+// دفتر النقدية / أي حساب
+function cashBook(){
+  const a=G('cbSel').value,rows=[];let bal=0;
+  entries.forEach(e=>{
+    e.debits.forEach(x=>{if(x.a===a){bal+=x.m;rows.push([e.date,e.desc,x.m,0,bal])}});
+    e.credits.forEach(x=>{if(x.a===a){bal-=x.m;rows.push([e.date,e.desc,0,x.m,bal])}});
+  });
+  G('cbBody').innerHTML=rows.length?rows.map(r=>`<tr class="border-t"><td class="p-2 whitespace-nowrap">${esc(r[0])}</td><td class="p-2">${esc(r[1])}</td><td class="p-2 text-emerald-700">${r[2]?fmt(r[2]):'-'}</td><td class="p-2 text-rose-700">${r[3]?fmt(r[3]):'-'}</td><td class="p-2 font-bold">${fmt(Math.abs(r[4]))} ${r[4]>0?'م':r[4]<0?'د':''}</td></tr>`).join(''):'<tr><td colspan="5" class="p-3 text-center text-slate-400">لا توجد حركات على هذا الحساب.</td></tr>';
+}
+
+// المخزون
+function invAdd(t='b',q='',p=''){
+  G('invRows').insertAdjacentHTML('beforeend',`<div class="ir flex gap-2 items-center"><select class="p-2 rounded border bg-white"><option value="b" ${t==='b'?'selected':''}>شراء</option><option value="s" ${t==='s'?'selected':''}>بيع (الكمية فقط)</option></select><input type="number" min="0" placeholder="الكمية" value="${q}" class="q w-24 p-2 rounded border"><input type="number" min="0" step="0.01" placeholder="سعر الوحدة" value="${p}" class="p w-28 p-2 rounded border"><button onclick="this.parentElement.remove()" class="text-slate-400">🗑</button></div>`);
+}
+function invCalc(){
+  const mv=[...document.querySelectorAll('#invRows .ir')].map(r=>({t:r.querySelector('select').value,q:+r.querySelector('.q').value||0,p:+r.querySelector('.p').value||0})).filter(x=>x.q>0);
+  let lots=[],cF=0,qA=0,vA=0,cA=0,err='';
+  for(const m of mv){
+    if(m.t==='b'){lots.push({q:m.q,p:m.p});qA+=m.q;vA+=m.q*m.p;continue}
+    if(m.q>qA+1e-9){err='⚠️ كمية البيع أكبر من المخزون المتاح، توقف الحساب عندها.';break}
+    let need=m.q;
+    while(need>1e-9){const l=lots[0],u=Math.min(need,l.q);cF+=u*l.p;l.q-=u;need-=u;if(l.q<=1e-9)lots.shift()}
+    const avg=vA/qA;cA+=m.q*avg;qA-=m.q;vA-=m.q*avg;
+  }
+  const eF=lots.reduce((p,l)=>p+l.q*l.p,0);
+  G('invR').innerHTML=(err?`<div class="text-rose-700 font-bold mb-2">${err}</div>`:'')+`<table class="w-full text-right"><thead><tr class="bg-slate-100"><th class="p-2">الطريقة</th><th class="p-2">تكلفة البضاعة المباعة</th><th class="p-2">مخزون آخر المدة</th></tr></thead><tbody><tr class="border-t"><td class="p-2 font-bold">FIFO (الوارد أولاً يُصرف أولاً)</td><td class="p-2">${fmt(cF)}</td><td class="p-2">${fmt(eF)}</td></tr><tr class="border-t"><td class="p-2 font-bold">المتوسط المتحرك</td><td class="p-2">${fmt(cA)}</td><td class="p-2">${fmt(vA)}</td></tr></tbody></table><p class="text-xs text-slate-500 mt-2">مجموع التكلفة والمخزون ثابت في الطريقتين، والفرق في توزيعه بين المباع والمتبقي.</p>`;
+}
+function initTools(){
+  G('adjT').innerHTML=Object.entries(TPL).map(([k,t])=>`<option value="${k}">${t.n}</option>`).join('');adjUI();
+  G('brF').innerHTML=BR.map(([k,l])=>`<label class="text-sm">${l}<input id="br_${k}" type="number" step="0.01" oninput="brCalc()" class="w-full p-2 rounded border"></label>`).join('');
+  invAdd('b',100,10);invAdd('b',50,12);invAdd('s',120,'');
+  renderTools();
+}
+
+// ===== جولة تفاعلية + تشخيص القيد + شرح المفاهيم =====
+const T2=(a,b)=>LANG==='en'?b:a;
+const HOLE='position:fixed;border-radius:10px;box-shadow:0 0 0 9999px rgba(15,23,42,.7);pointer-events:none;transition:all .25s;';
+const TOUR=[
+ {s:null,ar:'أهلاً بك في EDU_Acc 👋 هذه جولة سريعة (دقيقة واحدة) تشرح لك كيف تبدأ.',en:'Welcome to EDU_Acc 👋 Here is a quick one-minute tour to get you started.'},
+ {s:'#f',t:'journal',ar:'ابدأ من هنا: اختر الحساب المدين والحساب الدائن، واكتب المبلغ والبيان، ثم اضغط حفظ. تذكّر: مجموع المدين = مجموع الدائن.',en:'Start here: pick the debit and credit accounts, enter the amount and description, then save. Remember: total debit = total credit.'},
+ {s:'#t-journal',t:'journal',ar:'بعد الحفظ يظهر قيدك في دفتر اليومية، وهو السجل الأول لكل العمليات بترتيب حدوثها.',en:'After saving, your entry appears in the Journal, the first record of every transaction in order.'},
+ {s:'#t-ledger',t:'ledger',ar:'ثم انتقل إلى دفتر الأستاذ لترى أثر القيد على كل حساب (حساب T) ورصيده.',en:'Next, open the Ledger to see the entry\'s effect on each account (T-account) and its balance.'},
+ {s:'#t-trial',t:'trial',ar:'ميزان المراجعة يجمع أرصدة الحسابات ويتحقق أن مجموع المدين يساوي مجموع الدائن.',en:'The Trial balance lists account balances and checks that total debits equal total credits.'},
+ {s:'#t-fin',t:'fin',ar:'من القوائم المالية تعرف هل حققت ربحاً أم خسارة (قائمة الدخل)، وما تملكه المنشأة وما عليها (المركز المالي). صنّف حساباتك أولاً إن طُلب منك ذلك.',en:'Financial statements show whether you made a profit or loss (income statement) and what the business owns and owes (balance sheet). Classify your accounts first if asked.'},
+ {s:'#t-tables',t:'tables',ar:'الجداول المخصصة: أنشئ جداولك الحرة (إيرادات، مصروفات، صافي الربح...) وعبّئها يدوياً بدون قيود مزدوجة.',en:'Custom Tables: create your own free-form tables (revenues, expenses, net profit...) and fill them manually without double-entry.'},
+ {s:'#t-sheets',t:'sheets',ar:'هنا يستورد الطالب شيت المعلم ويحله ويصدّر إجابته مع تصحيح آلي، ويراجع المعلم التسليمات بضغطة زر، دون أي قاعدة بيانات.',en:'Here students import the teacher\'s sheet, solve it and export their answer with automatic grading; teachers review submissions in one click, with no database.'},
+ {s:'#t-dash',t:'dash',ar:'من المؤشرات المالية ترى نسب السيولة وهامش الربح ونسبة المصروفات للإيرادات في بطاقات ورسوم بيانية.',en:'Financial indicators shows liquidity ratios, profit margin and the expense-to-revenue ratio as cards and charts.'},
+ {s:'#t-ex',t:'ex',ar:'اختبر نفسك بتمارين متدرجة المستوى، مع تلميحات ونقاط واختبار سريع.',en:'Test yourself with graded exercises, hints, points and a quick quiz.'},
+ {s:'#t-tools',t:'tools',ar:'وهنا أدوات متقدمة: التسويات والإقفال والضريبة وتسوية البنك والمخزون. ابدأ بها بعد أن تتقن الأساسيات.',en:'Advanced tools live here: adjustments, closing, VAT, bank reconciliation and inventory. Use them once you are comfortable with the basics.'},
+ {s:null,t:'journal',ar:'تلميح أخير: اضغط علامة (؟) بجانب أي عنوان لتقرأ تعريفه، وزر «لماذا القيد غير متوازن؟» يساعدك على تصحيح أخطائك. يمكنك إعادة الجولة من زر ❓ جولة.',en:'Last tip: press the (?) next to any heading to read its definition, and use "Why is my entry unbalanced?" to fix mistakes. Replay this tour with the ❓ Tour button.'}
+];
+let tourI=0;
+function tourStart(){tourI=0;tourShow()}
+function tourGo(d){tourI+=d;if(tourI>=TOUR.length)return tourEnd();if(tourI<0)tourI=0;tourShow()}
+function tourEnd(){G('tourOv').classList.add('hidden');store.set('acc_tour',1);closeSidebar();tab('journal');window.scrollTo(0,0)}
+function tourShow(){
+  const st=TOUR[tourI],hole=G('tourHole'),last=tourI===TOUR.length-1;
+  G('tourOv').classList.remove('hidden');
+  if(st.t)tab(st.t);
+  const inSb=st.s&&st.s.indexOf('#t-')===0;
+  if(inSb)openSidebar();else closeSidebar();
+  G('tourN').textContent=(tourI+1)+' / '+TOUR.length;
+  G('tourTxt').textContent=T2(st.ar,st.en);
+  G('tourSkip').textContent=T2('تخطي','Skip');G('tourPrev').textContent=T2('السابق','Back');
+  G('tourNext').textContent=last?T2('ابدأ الاستخدام ✔','Get started ✔'):T2('التالي','Next');
+  G('tourPrev').style.visibility=tourI?'visible':'hidden';
+  const el=st.s?document.querySelector(st.s):null;
+  if(el){
+    el.scrollIntoView({block:'center'});
+    setTimeout(()=>{const r=el.getBoundingClientRect();hole.style.cssText=HOLE+`top:${r.top-6}px;left:${r.left-6}px;width:${r.width+12}px;height:${r.height+12}px`},inSb?380:120);
+  }else hole.style.cssText=HOLE+'top:50%;left:50%;width:0;height:0';
+}
+document.addEventListener('keydown',ev=>{
+  if(ev.key!=='Escape')return;
+  G('cm').classList.add('hidden');
+  if(!G('sidebar').classList.contains('translate-x-full'))closeSidebar();
+  if(!G('tourOv').classList.contains('hidden'))tourEnd();
+});
+
+// تشخيص القيد
+function diagnose(){
+  const rows=sd=>[...document.querySelectorAll('#'+sd+'Rows .row')].map(r=>{const a=r.querySelector('select').value;return {a:a==='__new__'?'':a,m:parseFloat(r.querySelector('.amt').value)||0}});
+  const D=rows('d'),C=rows('c'),msg=[],nm={d:T2('المدين','debit'),c:T2('الدائن','credit')};
+  [['d',D],['c',C]].forEach(([sd,l])=>l.forEach(x=>{
+    if(x.a&&x.m<=0)msg.push(T2(`سطر الحساب «${x.a}» في الجانب ${nm[sd]} بلا مبلغ، فلن يُحتسب.`,`The line for "${x.a}" on the ${nm[sd]} side has no amount, so it is ignored.`));
+    if(!x.a&&x.m>0)msg.push(T2(`يوجد مبلغ ${fmt(x.m)} في الجانب ${nm[sd]} بلا اختيار حساب.`,`There is an amount (${fmt(x.m)}) on the ${nm[sd]} side with no account selected.`));
+  }));
+  const d=D.filter(x=>x.a&&x.m>0),c=C.filter(x=>x.a&&x.m>0),sd=sum(d),sc=sum(c),diff=Math.abs(sd-sc);
+  if(!d.length||!c.length)msg.push(T2('القيد يحتاج طرفاً مديناً وطرفاً دائناً على الأقل، كل منهما بحساب ومبلغ.','An entry needs at least one debit and one credit line, each with an account and an amount.'));
+  [...new Set(d.map(x=>x.a).filter(a=>c.some(y=>y.a===a)))].forEach(a=>msg.push(T2(`الحساب «${a}» ظهر في الجانبين المدين والدائن؛ اختر حساباً مختلفاً لأحد الطرفين.`,`"${a}" appears on both sides; use a different account on one of them.`)));
+  [['d',d],['c',c]].forEach(([k,l])=>{
+    const seen={};l.forEach(x=>{seen[x.a]=(seen[x.a]||0)+1});
+    Object.keys(seen).filter(a=>seen[a]>1).forEach(a=>msg.push(T2(`الحساب «${a}» مكرر في الجانب ${nm[k]}؛ إن لم يكن مقصوداً فادمج السطرين.`,`"${a}" is repeated on the ${nm[k]} side; merge the lines if it was not intended.`)));
+  });
+  if(d.length&&c.length&&!eq(sd,sc)){
+    const big=sd>sc?'d':'c',all=[...d,...c],m1=all.find(x=>eq(x.m,diff)),m2=all.find(x=>eq(x.m*2,diff));
+    msg.push(T2(`مجموع المدين ${fmt(sd)} ومجموع الدائن ${fmt(sc)}، والفرق ${fmt(diff)} (الجانب ${nm[big]} أكبر). اجعل المجموعين متساويين.`,`Total debit ${fmt(sd)} vs total credit ${fmt(sc)}; difference ${fmt(diff)} (the ${nm[big]} side is larger). Make both totals equal.`));
+    if(m1)msg.push(T2(`الفرق يساوي مبلغ سطر «${m1.a}»؛ ربما نسيت الطرف المقابل له أو أدخلته مرة واحدة فقط.`,`The difference equals the amount of the "${m1.a}" line; you may have forgotten its counterpart or entered it only once.`));
+    if(m2)msg.push(T2(`الفرق يساوي ضعف مبلغ سطر «${m2.a}»؛ ربما وضعته في الجانب الخطأ.`,`The difference is twice the amount of "${m2.a}"; it may be on the wrong side.`));
+    if(Math.abs(diff-Math.round(diff))<0.005&&Math.round(diff)>=9&&Math.round(diff)%9===0)msg.push(T2('الفرق يقبل القسمة على 9، وهذا شائع عند تبديل رقمين بالخطأ (مثل 54 بدل 45). راجع كتابة المبالغ.','The difference is divisible by 9, which often means two digits were swapped (e.g. 54 instead of 45). Re-check the amounts.'));
+  }
+  const dg=G('diag');
+  dg.className='text-sm rounded-lg p-3 '+(msg.length?'bg-slate-50 text-slate-800 border border-amber-300':'bg-slate-50 text-emerald-700 border border-emerald-300');
+  dg.innerHTML=msg.length?`<b>${T2('🔎 نتيجة الفحص:','🔎 Check result:')}</b><ul class="list-disc pr-5 mt-1">${msg.map(m=>`<li>${esc(m)}</li>`).join('')}</ul>`:'✅ '+T2('لا توجد مشاكل: القيد متوازن وسليم الشكل. اضغط حفظ.','No problems found: the entry is balanced and well-formed. Press save.');
+}
+
+// شاشات المفاهيم المحاسبية
+const CON={
+ journal:{t:['دفتر اليومية','The General Journal'],
+  d:['السجل الأول الذي تُثبَّت فيه العمليات المالية للمنشأة بترتيب وقوعها التاريخي، ويُسجَّل كل قيد بطرفيه المدين والدائن مع بيان مختصر.','The first record in which a business\'s transactions are entered in date order. Each entry shows its debit and credit sides with a short description.'],
+  u:['يوفر سجلاً زمنياً كاملاً يمكن مراجعته، وهو مصدر الترحيل إلى دفتر الأستاذ، ويساعد على تتبع أي عملية إلى أصلها واكتشاف الأخطاء.','It gives a complete, reviewable timeline, is the source for posting to the ledger, and lets you trace any transaction back to its origin.'],
+  k:['يجب أن يتساوى في كل قيد مجموع المدين مع مجموع الدائن (مبدأ القيد المزدوج).','In every entry total debit must equal total credit (the double-entry principle).']},
+ ledger:{t:['دفتر الأستاذ','The General Ledger'],
+  d:['الدفتر الذي تُرحَّل إليه القيود من اليومية وتُجمَّع فيه العمليات حسب الحساب، فيُخصَّص لكل حساب صفحة (حساب T) بجانب مدين (منه) وجانب دائن (له).','The book to which journal entries are posted and grouped by account. Each account has a T-account with a debit side (Dr) and a credit side (Cr).'],
+  u:['يتيح معرفة رصيد أي حساب في أي وقت (كالنقدية أو ما على العملاء)، وهو الأساس الذي يُستخرج منه ميزان المراجعة.','It shows the balance of any account at any time (e.g. cash or amounts owed by customers) and is the basis for the trial balance.'],
+  k:['الرصيد = مجموع الجانب الأكبر − مجموع الجانب الأصغر، ويُنسب للجانب الأكبر.','Balance = larger side total − smaller side total, and it belongs to the larger side.']},
+ trial:{t:['ميزان المراجعة','The Trial Balance'],
+  d:['كشف بأرصدة جميع حسابات دفتر الأستاذ في تاريخ معين، يوضع فيه كل رصيد في عمود المدين أو الدائن حسب طبيعته ثم يُجمع كل عمود.','A list of all ledger account balances at a given date, with each balance placed in the debit or credit column and each column totalled.'],
+  u:['يتحقق من التوازن الحسابي للقيود (إجمالي الأرصدة المدينة = الدائنة) ويُعد قاعدة لتجهيز القوائم المالية. لكن توازنه لا يثبت خلو الدفاتر من الأخطاء، كاختيار حساب خاطئ بنفس المبلغ.','It checks the arithmetic accuracy of the entries (total debit balances = total credit balances) and prepares the ground for the financial statements. A balanced trial balance does not prove the books are error-free, e.g. a wrong account with the right amount.'],
+  k:['إذا لم يتوازن الميزان فابحث عن خطأ في الترحيل أو في حساب الأرصدة.','If it does not balance, look for a posting error or a balance-calculation error.']},
+ income:{t:['قائمة الدخل','The Income Statement'],
+  d:['قائمة مالية تبيّن إيرادات المنشأة ومصروفاتها خلال فترة محددة، وتنتهي بصافي الربح أو الخسارة (الإيرادات − المصروفات).','A financial statement showing a business\'s revenues and expenses over a period, ending with net profit or loss (revenues − expenses).'],
+  u:['تقيس نتيجة النشاط وكفاءة المنشأة في تحقيق الأرباح، وتعتمد عليها الإدارة والملاك والمستثمرون في قراراتهم، وتُحتسب على أساسها الضرائب.','It measures operating performance and profitability, guides decisions by management, owners and investors, and is the basis for tax calculation.'],
+  k:['تشمل الإيرادات والمصروفات فقط، وتُقفل حساباتها بعد إعدادها في نهاية الفترة.','It covers only revenues and expenses, whose accounts are closed after it is prepared at period end.']},
+ balance:{t:['المركز المالي (الميزانية العمومية)','The Balance Sheet'],
+  d:['قائمة تُظهر ما تملكه المنشأة (الأصول) وما عليها (الخصوم) وحقوق أصحابها (حقوق الملكية) في تاريخ معين، وتقوم على المعادلة: الأصول = الخصوم + حقوق الملكية.','A statement of what the business owns (assets), owes (liabilities) and what belongs to its owners (equity) at a date, based on: Assets = Liabilities + Equity.'],
+  u:['تعطي صورة عن قوة المركز المالي والسيولة وقدرة المنشأة على سداد التزاماتها، ويستخدمها الدائنون والمستثمرون لتقييم الملاءة.','It shows financial strength, liquidity and ability to pay obligations, and creditors and investors use it to assess solvency.'],
+  k:['تُضاف نتيجة الفترة (الربح أو الخسارة) إلى حقوق الملكية في الميزانية.','The period result (profit or loss) is added to equity in the balance sheet.']},
+ adjusting:{t:['قيود التسوية','Adjusting Entries'],
+  d:['قيود تُسجَّل في نهاية الفترة لإثبات الإيرادات والمصروفات في الفترة التي تخصها (أساس الاستحقاق)، مثل الإهلاك والمصروفات المستحقة والمقدمة.','Entries made at period end to record revenues and expenses in the period they belong to (accrual basis), such as depreciation, accrued and prepaid expenses.'],
+  u:['تضمن عدالة قياس الربح وسلامة بنود الميزانية، فلا تُحمَّل فترة بمصروف فترة أخرى ولا يُغفل التزام قائم.','They ensure fair profit measurement and accurate balance-sheet items, so no period carries another period\'s expense and no existing obligation is missed.'],
+  k:['تُسجَّل قبل إعداد القوائم المالية وقبل قيود الإقفال.','Record them before preparing the financial statements and before closing entries.']},
+ closing:{t:['قيود الإقفال','Closing Entries'],
+  d:['قيود تُقفل بها حسابات الإيرادات والمصروفات (الحسابات المؤقتة) في حساب ملخص الدخل، ثم يُرحَّل صافي الربح أو الخسارة إلى حقوق الملكية.','Entries that close revenue and expense accounts (temporary accounts) into an income summary account, then transfer net profit or loss to equity.'],
+  u:['تُصفّر الحسابات المؤقتة لتبدأ الفترة التالية من جديد، وتنقل نتيجة النشاط إلى رأس المال.','They reset temporary accounts so the next period starts fresh and move the result of operations into capital.'],
+  k:['اطبع قائمة الدخل قبل الإقفال لأن حساباتها تصبح أصفاراً بعده.','Print the income statement before closing, because its accounts become zero afterwards.']},
+ customTables:{t:['الجداول المخصصة','Custom Tables'],
+  d:['جداول حرة يُنشئها المستخدم بنفسه (مثل جدول الإيرادات والمصروفات وصافي الربح والخسارة) ويعبّئها يدوياً دون التقيد بنظام القيد المزدوج.','Free-form tables the user creates (e.g. revenues, expenses, net profit) and fills manually without double-entry constraints.'],
+  u:['تفيد في العروض السريعة والتحليل والتقارير الإدارية دون الحاجة لتسجيل قيود محاسبية كاملة.','Useful for quick presentations, analysis and management reports without full journal entries.'],
+  k:['القيود المحاسبية الرسمية تبقى في دفتر اليومية، أما هذه الجداول فهي مساحة حرة للعرض والتحليل.','Formal entries stay in the journal; these tables are a free space for presentation and analysis.']}
+};
+function concept(k){
+  const c=CON[k],i=LANG==='en'?1:0;
+  G('cmT').textContent=c.t[i];
+  G('cmB').innerHTML=[['📘',T2('التعريف','Definition'),c.d[i]],['💰',T2('الفائدة المالية','Why it matters'),c.u[i]],['💡',T2('معلومة تساعدك','Tip'),c.k[i]]].map(([ic,h,x])=>`<div><div class="font-bold text-slate-700">${ic} ${h}</div><p class="text-slate-600">${esc(x)}</p></div>`).join('');
+  G('cm').classList.remove('hidden');
+}
+
+// ===== دليل الحسابات الشجري =====
+function renderCoa(){
+  const by={};
+  accounts.forEach(a=>{const g=grpOf(a)||'?';(by[g]=by[g]||[]).push(a)});
+  const row=(code,label,cls,lvl,bal)=>`<div class="flex gap-2 py-0.5 ${cls}" style="padding-right:${lvl*22}px"><span class="w-14 shrink-0 font-mono text-slate-500">${code}</span><span>${label}</span><span class="mr-auto text-slate-500">${bal||''}</span></div>`;
+  const accs=g=>(by[g]||[]).sort(byCode).map(a=>{const b=totals(a).bal;return row(esc(codes[a]||''),esc(a),'',2,b?fmt(Math.abs(b))+(b>0?' م':' د'):'')}).join('');
+  let h='';
+  [['1',[ '11','12']],['2',['21','22']],['3',[]],['4',[]],['5',[]]].forEach(([m,subs])=>{
+    h+=row(m,GRP[m],'font-bold text-indigo-700',0);
+    if(subs.length)subs.forEach(sg=>{h+=row(sg,GRP[sg],'font-semibold',1)+accs(sg)});else h+=accs(m);
+  });
+  if(by['?'])h+=row('—','حسابات بدون كود','font-bold text-amber-700',0)+by['?'].map(a=>row('',esc(a),'',2)).join('');
+  G('coaTree').innerHTML=h;
+}
+function addAcc(){
+  const n=G('coaN').value.trim(),g=G('coaG').value;let c=G('coaC').value.trim();
+  if(!n)return alert(T2('اكتب اسم الحساب.','Enter the account name.'));
+  if(accounts.includes(n))return alert(T2('الحساب موجود بالفعل.','This account already exists.'));
+  if(c&&(!/^\d+$/.test(c)||c[0]!==g[0]||Object.values(codes).includes(c)))return alert(T2('الكود غير صالح: يجب أن يبدأ برقم المجموعة ولا يتكرر.','Invalid code: it must start with the group digit and be unique.'));
+  accounts.push(n);types[n]=G2T[g[0]];codes[n]=c||autoCode(g);
+  store.set('acc_list',accounts);store.set('acc_types',types);store.set('acc_codes',codes);
+  refreshSelects();renderCoa();dpFill();G('coaN').value='';G('coaC').value='';
+}
+function autoNumber(){
+  accounts.forEach(a=>{if(!codes[a])codes[a]=autoCode(({A:'11',L:'21',E:'3',R:'4',X:'5'})[types[a]]||'11')});
+  store.set('acc_codes',codes);refreshSelects();renderCoa();
+}
+
+// ===== جدول الإهلاك =====
+let dp=null;
+function dpFill(){
+  G('coaG').innerHTML=GOPTS;
+  const cur=G('dpA').value,list=sortedAcc().filter(a=>types[a]==='A');
+  G('dpA').innerHTML=list.map(a=>`<option value="${esc(a)}">${cp(a)}${esc(a)}</option>`).join('');
+  if(list.includes(cur))G('dpA').value=cur;
+  if(!G('dpY').value)G('dpY').value=new Date().getFullYear();
+}
+function dpCalc(cost,salv,life,method,rate){
+  const rows=[];let bv=cost,acc=0;
+  for(let y=1;y<=life;y++){
+    let d=method==='sl'?(cost-salv)/life:bv*rate;
+    if(bv-d<salv)d=bv-salv;
+    if(y===life)d=bv-salv;
+    d=R2(Math.max(0,d));const open=bv;acc=R2(acc+d);bv=R2(bv-d);
+    rows.push({y,open,d,acc,bv});
+  }
+  return rows;
+}
+function dpBuild(){
+  const asset=G('dpA').value,cost=parseFloat(G('dpC').value)||0,salv=parseFloat(G('dpS').value)||0,life=parseInt(G('dpL').value)||0,m=G('dpM').value;
+  const y0=parseInt(G('dpY').value)||new Date().getFullYear();
+  let rate=(parseFloat(G('dpR').value)||0)/100;if(!rate&&life)rate=2/life;
+  if(!asset)return alert(T2('اختر الأصل. أضفه من دليل الحسابات (مجموعة أصول ثابتة) إن لم يظهر.','Choose the asset. Add it from the chart of accounts (fixed assets group) if it is not listed.'));
+  if(!(cost>0)||life<1||life>50||salv<0||salv>=cost)return alert(T2('تحقق من البيانات: التكلفة أكبر من صفر، والخردة أقل من التكلفة، والعمر بين 1 و50 سنة.','Check the inputs: cost above zero, salvage below cost, life between 1 and 50 years.'));
+  if(m==='db'&&!(rate>0&&rate<=1))return alert(T2('نسبة الإهلاك المتناقص يجب أن تكون بين 0 و100%.','The declining rate must be between 0 and 100%.'));
+  dp={asset,y0,m,rate,rows:dpCalc(cost,salv,life,m,rate)};dpRender();
+}
+const dpDesc=r=>`قيد إهلاك ${dp.asset} - ${dp.y0+r.y-1}`;
+function dpRender(){
+  if(!dp)return;
+  const body=dp.rows.map((r,i)=>`<tr class="border-t"><td class="p-2">${dp.y0+r.y-1}</td><td class="p-2">${fmt(r.open)}</td><td class="p-2 font-bold">${fmt(r.d)}</td><td class="p-2">${fmt(r.acc)}</td><td class="p-2">${fmt(r.bv)}</td><td class="p-2">${entries.some(e=>e.desc===dpDesc(r))?'✅':r.d>0?`<button onclick="dpPost(${i})" class="text-xs bg-indigo-600 text-white px-2 py-1 rounded">${T2('تسجيل القيد','Post entry')}</button>`:''}</td></tr>`).join('');
+  G('dpOut').innerHTML=`<div class="text-sm mb-2 font-bold">${esc(dp.asset)} — ${dp.m==='sl'?T2('القسط الثابت','Straight-line'):T2('القسط المتناقص','Declining balance')+' ('+(dp.rate*100).toFixed(1)+'%)'}</div>
+   <table class="w-full text-right"><thead><tr class="bg-slate-100 text-slate-600"><th class="p-2">${T2('السنة','Year')}</th><th class="p-2">${T2('القيمة الدفترية أول السنة','Opening book value')}</th><th class="p-2">${T2('قسط الإهلاك','Depreciation')}</th><th class="p-2">${T2('مجمع الإهلاك','Accumulated')}</th><th class="p-2">${T2('القيمة الدفترية آخر السنة','Closing book value')}</th><th class="p-2"></th></tr></thead><tbody>${body}</tbody></table>
+   <p class="text-xs text-slate-500 mt-2">${T2('القيد: من حـ/ مصروف إهلاك الأصل إلى حـ/ مجمع إهلاك الأصل، بتاريخ 31 ديسمبر من كل سنة.','Entry: Dr depreciation expense, Cr accumulated depreciation, dated 31 December each year.')}</p>`;
+}
+function dpPost(i,quiet){
+  const r=dp.rows[i],ex='مصروف إهلاك '+dp.asset,ac='مجمع إهلاك '+dp.asset;
+  ensure(ex,'X','5');ensure(ac,'A','12');
+  if(!post(dpDesc(r),[[ex,r.d]],[[ac,r.d]],`${dp.y0+r.y-1}-12-31`)){if(!quiet)alert(T2('تعذر تسجيل القيد.','Could not post the entry.'));return false}
+  if(!quiet){renderAll();dpRender()}return true;
+}
+function dpPostAll(){
+  if(!dp)return alert(T2('أنشئ الجدول أولاً.','Build the schedule first.'));
+  let n=0;dp.rows.forEach((r,i)=>{if(r.d>0&&!entries.some(e=>e.desc===dpDesc(r))&&dpPost(i,true))n++});
+  renderAll();dpRender();alert(T2(`تم تسجيل ${n} قيد إهلاك.`,`Posted ${n} depreciation entries.`));
+}
+
+// ===== لوحة المؤشرات =====
+const PAL2=['#4f46e5','#64748b','#818cf8','#94a3b8','#475569','#a5b4fc','#cbd5e1'];
+function finCalc(){
+  const v={A:[],L:[],E:[],R:[],X:[]};
+  usedAccounts().forEach(a=>{const t=types[a];if(!v[t])return;const b=totals(a).bal;v[t].push([a,(t==='A'||t==='X')?b:-b])});
+  const tot=k=>v[k].reduce((p,x)=>p+x[1],0),inG=(k,gs)=>v[k].filter(x=>gs.includes(grpOf(x[0]))).reduce((p,x)=>p+x[1],0);
+  const sales=(v.R.find(x=>x[0]==='المبيعات')||[0,0])[1]||tot('R');
+  const qa=v.A.filter(x=>/^110[123]$/.test(codes[x[0]]||'')).reduce((p,x)=>p+x[1],0);
+  return {v,A:tot('A'),L:tot('L'),E:tot('E'),R:tot('R'),X:tot('X'),ni:tot('R')-tot('X'),sales,ca:tot('A')-inG('A',['12']),cl:tot('L')-inG('L',['22']),qa};
+}
+function pieSVG(items){
+  items=items.filter(x=>x[1]>0);const tot=items.reduce((p,x)=>p+x[1],0);
+  if(!tot)return `<div class="p-6 text-center text-slate-400 text-sm">${T2('لا توجد بيانات','No data')}</div>`;
+  let a0=-Math.PI/2,b='';const P=a=>`${(100+90*Math.cos(a)).toFixed(1)} ${(100+90*Math.sin(a)).toFixed(1)}`;
+  items.forEach(([l,val],i)=>{
+    const a1=a0+val/tot*2*Math.PI,col=PAL2[i%7];
+    b+=val/tot>0.9999?`<circle cx="100" cy="100" r="90" fill="${col}"/>`:`<path d="M100 100L${P(a0)}A90 90 0 ${a1-a0>Math.PI?1:0} 1 ${P(a1)}Z" fill="${col}"/>`;
+    b+=`<rect x="215" y="${12+i*20}" width="11" height="11" fill="${col}"/><text x="232" y="${22+i*20}" font-size="12">${esc(l).slice(0,16)} (${Math.round(val/tot*100)}%)</text>`;
+    a0=a1;
+  });
+  return `<svg viewBox="0 0 400 ${Math.max(200,items.length*20+24)}" class="w-full" dir="ltr">${b}</svg>`;
+}
+function barsSVG(items){
+  const W=400,H=210,B0=170,T0=30,mx=Math.max(...items.map(x=>Math.abs(x[1])),1),bw=70,gap=(W-items.length*bw)/(items.length+1);
+  return `<svg viewBox="0 0 ${W} ${H}" class="w-full" dir="ltr"><line x1="10" x2="${W-10}" y1="${B0}" y2="${B0}" stroke="#94a3b8"/>`+items.map(([l,val,c],i)=>{
+    const h=Math.abs(val)/mx*(B0-T0),x=gap+i*(bw+gap);
+    return `<rect x="${x}" y="${B0-h}" width="${bw}" height="${h}" fill="${c}" rx="4"/><text x="${x+bw/2}" y="${B0-h-6}" font-size="12" text-anchor="middle" font-weight="bold">${fmt(val)}</text><text x="${x+bw/2}" y="${B0+16}" font-size="12" text-anchor="middle">${esc(l)}</text>`;
+  }).join('')+'</svg>';
+}
+function renderDash(){
+  const box=G('dashBody');
+  if(!usedAccounts().length){box.innerHTML=`<div class="bg-white rounded-xl p-6 text-center text-slate-400 border">${T2('سجّل قيوداً وصنّف حساباتك لتظهر المؤشرات والرسوم.','Record entries and classify accounts to see indicators and charts.')}</div>`;return}
+  const f=finCalc(),pc=x=>isFinite(x)?(x*100).toFixed(1)+'%':'—',rt=x=>isFinite(x)?x.toFixed(2):'—';
+  const ok='text-emerald-700',bad='text-rose-700',mid='text-amber-600';
+  const cur=f.ca/f.cl,qk=f.qa/f.cl,mar=f.ni/f.sales,exr=f.X/f.R,debt=f.L/f.A;
+  const cards=[
+   [T2('نسبة التداول (الأصول المتداولة ÷ الخصوم المتداولة)','Current ratio (current assets ÷ current liabilities)'),rt(cur),
+     !f.cl?T2('لا توجد خصوم متداولة','No current liabilities'):cur>=2?T2('سيولة قوية','Strong liquidity'):cur>=1?T2('سيولة مقبولة','Acceptable liquidity'):T2('سيولة ضعيفة: الخصوم المتداولة أكبر من الأصول المتداولة','Weak liquidity: current liabilities exceed current assets'),!f.cl?'':cur>=1?ok:bad],
+   [T2('نسبة السيولة السريعة ((نقدية + بنك + عملاء) ÷ خصوم متداولة)','Quick ratio ((cash + bank + customers) ÷ current liabilities)'),rt(qk),
+     !f.cl?'—':qk>=1?T2('تغطي التزاماتها القصيرة بسرعة','Covers short-term obligations quickly'):T2('أقل من 1: تحتاج لتحصيل أو بيع أصول أخرى للسداد','Below 1: needs collections or other assets to pay'),!f.cl?'':qk>=1?ok:mid],
+   [T2('هامش صافي الربح (صافي الربح ÷ المبيعات)','Net profit margin (net profit ÷ sales)'),pc(mar),
+     !isFinite(mar)?'—':f.ni>=0?T2(`يتبقى ${(mar*100).toFixed(1)} جنيه ربحاً من كل 100 جنيه مبيعات`,`${(mar*100).toFixed(1)} of profit from every 100 of sales`):T2('المنشأة تحقق خسارة','The business is making a loss'),f.ni>=0?ok:bad],
+   [T2('نسبة المصروفات إلى الإيرادات','Expenses to revenue'),pc(exr),
+     !isFinite(exr)?'—':T2(`المصروفات تستهلك ${(exr*100).toFixed(1)}% من الإيرادات`,`Expenses consume ${(exr*100).toFixed(1)}% of revenue`),!isFinite(exr)?'':exr<=0.7?ok:exr<1?mid:bad],
+   [T2('نسبة الديون إلى الأصول (الخصوم ÷ الأصول)','Debt ratio (liabilities ÷ assets)'),pc(debt),
+     !isFinite(debt)?'—':T2(`${(debt*100).toFixed(1)}% من الأصول ممولة بالديون`,`${(debt*100).toFixed(1)}% of assets are financed by debt`),!isFinite(debt)?'':debt<=0.5?ok:mid]
+  ];
+  const card=([t,val,note,cls])=>`<div class="bg-white rounded-xl p-4 shadow border"><div class="text-xs text-slate-500 min-h-[2.5rem]">${t}</div><div class="text-3xl font-bold ${cls}">${val}</div><div class="text-xs text-slate-600 mt-1">${note}</div></div>`;
+  const box2=(t,svg)=>`<div class="bg-white rounded-xl p-4 shadow border"><h3 class="font-bold mb-2">${t}</h3>${svg}</div>`;
+  box.innerHTML=`<div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">${cards.map(card).join('')}</div>
+   <div class="grid md:grid-cols-2 gap-4 mt-4">
+    ${box2(T2('الإيرادات والمصروفات والنتيجة','Revenue, expenses and result'),barsSVG([[T2('الإيرادات','Revenue'),f.R,'#6366f1'],[T2('المصروفات','Expenses'),f.X,'#94a3b8'],[f.ni>=0?T2('الربح','Profit'):T2('الخسارة','Loss'),f.ni,f.ni>=0?'#334155':'#9f1239']]))}
+    ${box2(T2('نسبة المصروفات للإيرادات','Expenses vs profit as share of revenue'),pieSVG([[T2('مصروفات','Expenses'),f.X],[T2('صافي الربح','Net profit'),Math.max(f.ni,0)]]))}
+    ${box2(T2('تكوين المصروفات','Expense breakdown'),pieSVG(f.v.X))}
+    ${box2(T2('تكوين الأصول','Asset composition'),pieSVG(f.v.A))}
+   </div>`;
+}
+
+// ===== مفاهيم إضافية =====
+Object.assign(CON,{
+ coa:{t:['دليل الحسابات','Chart of Accounts'],
+  d:['قائمة منظمة بجميع حسابات المنشأة، يُعطى كل حساب كوداً رقمياً يدل على موضعه في الشجرة: الرقم الأول للمجموعة الرئيسية (1 أصول، 2 خصوم، 3 حقوق ملكية، 4 إيرادات، 5 مصروفات)، والرقمان الأولان للمجموعة الفرعية (11 أصول متداولة)، والأربعة أرقام للحساب (1101 النقدية).','An organised list of all the business\'s accounts, each with a numeric code showing its place in the tree: first digit = main group (1 assets, 2 liabilities, 3 equity, 4 revenue, 5 expenses), first two digits = sub-group (11 current assets), four digits = the account (1101 cash).'],
+  u:['يسهّل ترتيب الحسابات والبحث عنها وإعداد التقارير، ويقلل التكرار والأخطاء، وهو الأساس الذي تعمل به برامج المحاسبة الجاهزة.','It makes accounts easy to organise, find and report on, reduces duplication and errors, and is how ready-made accounting software works.'],
+  k:['اختر المجموعة الصحيحة عند إنشاء الحساب، لأن النسب المالية والقوائم تعتمد عليها.','Pick the right group when creating an account, because ratios and statements depend on it.']},
+ dep:{t:['إهلاك الأصول الثابتة','Depreciation of Fixed Assets'],
+  d:['توزيع تكلفة الأصل الثابت (مطروحاً منها قيمة الخردة) على سنوات عمره الإنتاجي. القسط الثابت يوزعها بالتساوي، والقسط المتناقص يحسب نسبة ثابتة من القيمة الدفترية المتبقية فيكون الإهلاك أكبر في السنوات الأولى.','Spreading the cost of a fixed asset (less salvage value) over its useful life. Straight-line spreads it evenly; declining balance applies a fixed rate to the remaining book value, so early years have higher depreciation.'],
+  u:['يُظهر الأصل بقيمته الدفترية العادلة ويحمّل كل فترة بنصيبها من تكلفته (مبدأ المقابلة).','It shows the asset at a fair book value and charges each period its share of the cost (matching principle).'],
+  k:['القيد: من حـ/ مصروف الإهلاك إلى حـ/ مجمع الإهلاك، ويبقى الأصل نفسه بتكلفته التاريخية.','Entry: Dr depreciation expense, Cr accumulated depreciation; the asset itself stays at historical cost.']},
+ ratios:{t:['المؤشرات المالية','Financial Ratios'],
+  d:['نسب تُحسب من القوائم المالية لتقييم أداء المنشأة: نسبة التداول = الأصول المتداولة ÷ الخصوم المتداولة. السيولة السريعة تقيس القدرة على السداد من النقدية والبنك والعملاء. هامش صافي الربح = صافي الربح ÷ المبيعات. نسبة المصروفات = المصروفات ÷ الإيرادات.','Ratios calculated from the financial statements to judge performance: current ratio = current assets ÷ current liabilities. Quick ratio measures ability to pay from cash, bank and customers. Net margin = net profit ÷ sales. Expense ratio = expenses ÷ revenue.'],
+  u:['تساعد الإدارة والدائنين والمستثمرين على الحكم على السيولة والربحية وكفاءة التكلفة.','They help management, creditors and investors judge liquidity, profitability and cost efficiency.'],
+  k:['نسبة تداول أكبر من 1 تعني أن الأصول المتداولة تغطي الخصوم القصيرة، وكلما انخفضت نسبة المصروفات ارتفعت الربحية.','A current ratio above 1 means current assets cover short-term liabilities; the lower the expense ratio, the higher the profitability.']}
+});
+
+// ===== الشيتات والتصحيح الآلي (بدون قاعدة بيانات) =====
+function h53(str){
+  let h1=0xdeadbeef,h2=0x41c6ce57;
+  for(let i=0;i<str.length;i++){const ch=str.charCodeAt(i);h1=Math.imul(h1^ch,2654435761);h2=Math.imul(h2^ch,1597334677)}
+  h1=Math.imul(h1^(h1>>>16),2246822507)^Math.imul(h2^(h2>>>13),3266489909);
+  h2=Math.imul(h2^(h2>>>16),2246822507)^Math.imul(h1^(h1>>>13),3266489909);
+  return (4294967296*(2097151&h2)+(h1>>>0)).toString(36);
+}
+const sideSig=l=>{const m={};l.forEach(x=>{m[x.a]=R2((m[x.a]||0)+x.m)});return Object.keys(m).sort().map(a=>a+'='+m[a].toFixed(2)).join(';')};
+const sigOf=e=>'D:'+sideSig(e.debits)+'|C:'+sideSig(e.credits);
+const accSet=e=>[...new Set([...e.debits,...e.credits].map(x=>x.a))].sort().join('|');
+const fpOf=m=>h53(m.map(x=>x.h+x.a).join(','));
+const cleanEnts=arr=>(Array.isArray(arr)?arr:[]).filter(e=>e&&Array.isArray(e.debits)&&Array.isArray(e.credits)).map(e=>({date:String(e.date||''),desc:String(e.desc||''),debits:e.debits.map(x=>({a:String(x.a),m:+x.m||0})),credits:e.credits.map(x=>({a:String(x.a),m:+x.m||0}))}));
+const cleanSheet=d=>({sheetId:String(d.sheetId),title:String(d.title||''),instructions:String(d.instructions||''),maxScore:+d.maxScore||10,expected:+d.expected||0,
+  model:(Array.isArray(d.model)?d.model:[]).filter(m=>m&&typeof m.h==='string'&&typeof m.a==='string').map(m=>({h:m.h,a:m.a})),
+  accounts:(Array.isArray(d.accounts)?d.accounts:[]).map(String),attachment:cleanAtt(d.attachment)});
+function dlFile(name,text,type){const l=document.createElement('a');l.href=URL.createObjectURL(new Blob([text],{type}));l.download=name;l.click()}
+const safeName=x=>String(x).replace(/[^\w\u0600-\u06FF-]+/g,'_');
+function tbOf(ents){
+  const b={};
+  ents.forEach(e=>{e.debits.forEach(x=>{b[x.a]=(b[x.a]||0)+x.m});e.credits.forEach(x=>{b[x.a]=(b[x.a]||0)-x.m})});
+  let d=0,c=0;Object.values(b).forEach(v=>{if(v>0)d+=v;else c-=v});
+  return {d:R2(d),c:R2(c),ok:eq(d,c)};
+}
+function gradeEntries(ents,sh){
+  const tb=tbOf(ents),notes=[],mc=sh.model.length,pool=sh.model.map(m=>({...m,used:false}));
+  let matched=0,partial=0,extra=0,score=0,mode='model';
+  const rest=[];
+  ents.forEach(e=>{const m=pool.find(q=>!q.used&&q.h===h53(sh.sheetId+'#'+sigOf(e)));if(m){m.used=true;matched++}else rest.push(e)});
+  rest.forEach(e=>{const m=pool.find(q=>!q.used&&q.a===h53(sh.sheetId+'@'+accSet(e)));if(m){m.used=true;partial++}else extra++});
+  const missing=Math.max(0,mc-matched-partial);
+  if(!ents.length)notes.push('لم يتم تسجيل أي قيد.');
+  notes.push(tb.ok?'ميزان المراجعة متوازن ✅':'ميزان المراجعة غير متوازن ❌ (المدين '+tb.d+' والدائن '+tb.c+')');
+  if(ents.some(e=>!eq(sum(e.debits),sum(e.credits))))notes.push('يوجد قيد غير متوازن داخل الملف.');
+  const unk=[...new Set(ents.flatMap(e=>[...e.debits,...e.credits].map(x=>x.a)).filter(a=>sh.accounts.length&&!sh.accounts.includes(a)))];
+  if(unk.length)notes.push('حسابات خارج دليل الشيت: '+unk.slice(0,6).join('، '));
+  if(mc){
+    score=Math.max(0,Math.min(1,(matched+0.25*partial-0.5*extra)/mc))*sh.maxScore;
+    notes.push(`قيود صحيحة تماماً: ${matched} من ${mc}`);
+    if(partial)notes.push(`${partial} قيد بحسابات صحيحة لكن المبلغ أو الجانب (مدين/دائن) غير صحيح (ربع الدرجة لكل قيد).`);
+    if(missing)notes.push(`ينقص ${missing} قيد من القيود المطلوبة.`);
+    if(extra)notes.push(`${extra} قيد زائد أو لا يطابق أي قيد مطلوب (يُخصم نصف قيد لكل واحد).`);
+    if(matched===mc&&!extra&&!partial&&tb.ok)notes.push('تم حل الشيت بالكامل ✅');
+  }else{
+    mode='shape';
+    score=tb.ok&&ents.length?Math.min(1,ents.length/(sh.expected||1))*sh.maxScore:0;
+    notes.push('لا يوجد حل نموذجي في هذا الشيت: التقييم شكلي (توازن الميزان وعدد القيود'+(sh.expected?` من ${sh.expected} متوقعة`:'')+').');
+  }
+  return {isBalanced:tb.ok,totalScore:Math.round(score*10)/10,maxScore:sh.maxScore,matched,partial,missing,extra,modelCount:mc,entriesCount:ents.length,mode,notes};
+}
+
+// ----- المعلم: تصدير شيت -----
+function exportSheet(){
+  if(!isTeacher())return alert(T2('هذه الأداة لوضع المعلم فقط.','This tool is for teacher mode only.'));
+  if(!G('shT').value.trim())return alert(T2('اكتب عنوان الشيت.','Enter the sheet title.'));
+  solOpen();
+}
+function doExportSheet(auto){
+  const title=G('shT').value.trim();
+  const maxScore=parseFloat(G('shM').value)||10,expected=parseInt(G('shE').value)||0;
+  const sheetId='S'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  const model=auto?[]:entries.map(e=>({h:h53(sheetId+'#'+sigOf(e)),a:h53(sheetId+'@'+accSet(e))}));
+  const inc=G('shAcc').checked;
+  const sheet={type:'acc-sheet',v:1,sheetId,title,instructions:G('shI').value.trim(),maxScore,expected,model,
+    accounts:inc?accounts.slice():[],types:inc?{...types}:{},codes:inc?{...codes}:{}};
+  if(cloudOn()){cloudPublishSheet(sheet);return}
+  dlFile('sheet-'+safeName(title)+'.json',JSON.stringify(sheet),'application/json');
+  const made=store.get('acc_made',{});made[sheetId]=fpOf(model);store.set('acc_made',made);
+  alert(auto?T2('تم تصدير الشيت بتصحيح تلقائي (حسب توازن الميزان وعدد القيود بالحل). أرسل الملف للطلاب.','Sheet exported with automatic grading (trial-balance and number of entries in the solution). Send the file to your students.')
+    :T2('تم تصدير الشيت. أرسل الملف للطلاب. يمكنك الآن مسح القيود لبدء شيت جديد.','Sheet exported. Send the file to your students. You can now clear the entries to start a new sheet.'));
+}
+
+// ----- الطالب: استيراد وتصدير إجابة -----
+let activeSheet=store.get('acc_sheet',null);
+if(activeSheet){try{activeSheet=cleanSheet(activeSheet)}catch(x){activeSheet=null}}
+function loadSheetData(d,inp){
+  const S=cleanSheet(d);
+  if(entries.length){
+    if(!confirm(T2('سيبدأ شيت جديد: سيتم تنزيل نسخة احتياطية من عملك الحالي ثم مسح القيود. متابعة؟','A new sheet will start: your current work will be downloaded as a backup and the entries cleared. Continue?')))return;
+    backup();
+  }
+  const used=new Set(Object.values(codes));
+  S.accounts.forEach(a=>{
+    if(accounts.includes(a))return;
+    accounts.push(a);const t=d.types&&d.types[a];types[a]=TN[t]?t:'';
+    const c=d.codes&&d.codes[a];
+    if(typeof c==='string'&&/^\d{1,6}$/.test(c)&&!used.has(c)){codes[a]=c;used.add(c)}
+  });
+  store.set('acc_list',accounts);store.set('acc_types',types);store.set('acc_codes',codes);
+  entries=[];store.set('acc_entries',entries);
+  activeSheet=S;store.set('acc_sheet',S);
+  G('stRes').innerHTML='';
+  refreshSelects();renderAll();tab('sheets');
+}
+function importSheet(inp){
+  const f=inp.files[0];if(!f)return;
+  const done=()=>{inp.value=''};
+  if(f.size>2e6){attachFile(f);done();return}
+  const r=new FileReader();
+  r.onload=()=>{
+    let d=null;try{d=JSON.parse(r.result)}catch(x){}
+    if(d&&d.type==='acc-sheet'&&d.sheetId){
+      try{loadSheetData(d,inp)}catch(x){attachFile(f)}
+    }else attachFile(f);
+    done();
+  };
+  r.onerror=()=>{attachFile(f);done()};
+  r.readAsText(f);
+}
+function fileToAttachment(f){
+  return new Promise(res=>{
+    const att={name:f.name,type:f.type||'',size:f.size,text:'',url:''};
+    const fin=()=>res(att);
+    const readUrl=()=>{
+      if(f.size>1000000){fin();return}
+      const r=new FileReader();r.onload=()=>{att.url=String(r.result);fin()};r.onerror=fin;r.readAsDataURL(f);
+    };
+    if(/^text\//.test(f.type)||/\.(txt|json|csv|md)$/i.test(f.name)){
+      f.text().then(t=>{att.text=t.slice(0,20000)}).catch(()=>{}).then(()=>{if(f.size>1000000)fin();else readUrl()});
+    }else if(/\.(xlsx|xls)$/i.test(f.name)&&window.XLSX){
+      f.arrayBuffer().then(b=>{const wb=XLSX.read(b,{type:'array'});att.text=XLSX.utils.sheet_to_csv(wb.Sheets[wb.SheetNames[0]]).slice(0,20000)}).catch(()=>{}).then(readUrl);
+    }else readUrl();
+  });
+}
+function cleanAtt(a){
+  return a&&typeof a==='object'?{name:String(a.name||'').slice(0,200),type:String(a.type||'').slice(0,100),size:+a.size||0,
+    text:typeof a.text==='string'?a.text.slice(0,20000):'',url:typeof a.url==='string'&&a.url.startsWith('data:')?a.url:''}:null;
+}
+function attachFile(f){
+  fileToAttachment(f).then(att=>{
+    const S={sheetId:'F'+Date.now().toString(36),title:att.name,instructions:'',maxScore:10,expected:0,model:[],accounts:[],attachment:att};
+    activeSheet=S;store.set('acc_sheet',S);G('stRes').innerHTML='';
+    renderAll();tab('sheets');
+  });
+}
+function attHTML(a){
+  if(!a)return '';
+  let body='';
+  if(a.url&&a.url.startsWith('data:image/'))body=`<img src="${esc(a.url)}" alt="" class="max-h-72 mt-2 rounded border">`;
+  else if(a.text)body=`<pre class="mt-2 max-h-72 overflow-auto bg-white border rounded p-2 text-xs whitespace-pre-wrap" dir="auto">${esc(a.text)}</pre>`;
+  else body=`<p class="text-xs text-slate-600 mt-1">${T2('لا يمكن معاينة هذا النوع من الملفات داخل المنصة.','This file type cannot be previewed inside the platform.')}</p>`;
+  const dl=a.url?`<a href="${esc(a.url)}" download="${esc(a.name)}" class="inline-block mt-2 text-indigo-700 underline text-xs">⬇ ${T2('فتح / تنزيل الملف','Open / download the file')}</a>`:'';
+  return `<div class="mt-3 border-t pt-2 text-sm"><div class="font-bold">📎 ${esc(a.name)}</div>${body}${dl}</div>`;
+}
+function resultHTML(gr){
+  const ok=gr.totalScore>=gr.maxScore*0.6;
+  return `<div class="rounded-xl border p-4 ${ok?'bg-slate-50 border-emerald-300':'bg-slate-50 border-amber-300'}"><div class="text-2xl font-bold">${gr.totalScore} / ${gr.maxScore}</div><div class="font-bold">${gr.isBalanced?T2('الميزان متوازن ✅','Trial balance balanced ✅'):T2('الميزان غير متوازن ❌','Trial balance not balanced ❌')}</div><ul class="list-disc pr-5 text-sm mt-2">${gr.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul></div>`;
+}
+function exportAnswer(){
+  if(!activeSheet)return alert(T2('لا يوجد شيت نشط. استورد شيت التدريب أولاً.','No active sheet. Import a practice sheet first.'));
+  const p=getProfile();
+  if(!p||p.role!=='student')return alert(T2('سجّل دخولك كطالب أولاً لتصدير الإجابة (وضع المعلم لا يصدّر إجابات).','Sign in as a student first to export an answer (teacher mode cannot export answers).'));
+  const S=activeSheet,gr=gradeEntries(cleanEnts(entries),S);
+  if(cloudOn()){cloudSubmit(S,gr);return}
+  const out={type:'acc-answer',v:2,studentName:p.name,studentCode:p.code,studentYear:p.year,profileIntegrity:p._ok?'ok':'failed',sheetTitle:S.title,exportedAt:new Date().toISOString(),entries,
+    sheet:{sheetId:S.sheetId,title:S.title,maxScore:S.maxScore,expected:S.expected,model:S.model,accounts:S.accounts},gradeReport:gr};
+  dlFile('answer-'+safeName(p.name)+'-'+safeName(S.title)+'.json',JSON.stringify(out,null,1),'application/json');
+  G('stRes').innerHTML=resultHTML(gr);
+}
+function endSheet(){
+  if(!activeSheet)return;
+  if(!confirm(T2('إنهاء الشيت الحالي؟ (قيودك تبقى كما هي)','End the current sheet? (your entries stay as they are)')))return;
+  activeSheet=null;store.set('acc_sheet',null);G('stRes').innerHTML='';renderSheets();
+}
+function renderSheets(){
+  renderCloudUI();
+  G('shInfo').textContent=T2(`الحل النموذجي = القيود الحالية في دفتر اليومية (${entries.length} قيد)`,`Model solution = the current journal entries (${entries.length})`);
+  const A=G('shActive'),pill=G('sheetPill');
+  if(!activeSheet){A.innerHTML='';pill.classList.add('hidden');return}
+  A.innerHTML=`<div class="bg-slate-50 border border-amber-300 rounded-xl p-4"><div class="font-bold text-slate-800">📝 ${T2('الشيت النشط','Active sheet')}: ${esc(activeSheet.title)}</div><p class="text-sm mt-2 whitespace-pre-line">${esc(activeSheet.instructions)||'—'}</p><div class="text-xs text-slate-600 mt-2">${T2('الدرجة النهائية','Max score')}: ${activeSheet.maxScore}${activeSheet.model.length?' | '+T2('عدد القيود المطلوبة','Required entries')+': '+activeSheet.model.length:''}</div>${attHTML(activeSheet.attachment)}</div>`;
+  pill.textContent='📝 '+activeSheet.title;pill.classList.remove('hidden');
+}
+
+// ----- المعلم: مراجعة التسليمات -----
+let rvRows=[];
+const csvCell=c=>{let t=String(c);if(/^[=+\-@\t\r]/.test(t))t="'"+t;return '"'+t.replace(/"/g,'""')+'"'};
+function reviewFiles(inp){
+  if(!isTeacher()){inp.value='';return alert(T2('هذه الأداة لوضع المعلم فقط.','This tool is for teacher mode only.'))}
+  const fl=[...inp.files];if(!fl.length)return;
+  Promise.all(fl.map(f=>(f.size>5e6?Promise.resolve(''):f.text()).then(t=>{try{return {f:f.name,d:JSON.parse(t),file:f}}catch(x){return {f:f.name,d:null,file:f}}}).catch(()=>({f:f.name,d:null,file:f})))).then(rs=>reviewRender(rs,inp));
+}
+function reviewRender(rs,inp){
+    const made=store.get('acc_made',{});
+    const rows=rs.map(({f,d,file})=>{
+      if(!d||d.type!=='acc-answer'||!d.sheet||!Array.isArray(d.entries))return {f,bad:true,file};
+      const sh=cleanSheet(d.sheet),ents=cleanEnts(d.entries),gr=gradeEntries(ents,sh),rep=d.gradeReport||{},flags=[];
+      if(Math.abs((+rep.totalScore||0)-gr.totalScore)>0.05)flags.push(T2('⚠ الدرجة في الملف ('+rep.totalScore+') لا تطابق إعادة الحساب','⚠ Reported score ('+rep.totalScore+') differs from the recalculated one'));
+      const fp=made[sh.sheetId];
+      if(fp&&fp!==fpOf(sh.model))flags.push(T2('⚠ الحل المضمّن لا يطابق الشيت الأصلي (تلاعب محتمل)','⚠ The embedded solution differs from the original sheet (possible tampering)'));
+      if(!fp&&!d.cloud)flags.push(T2('ℹ لم يُتحقق من الشيت الأصلي (غير موجود على هذا المتصفح)','ℹ Original sheet not found in this browser, so it was not verified'));
+      const name=String(d.studentName||'—'),code=String(d.studentCode||'').replace(/\D/g,'').slice(0,12),year=String(d.studentYear||'');
+      if(!code)flags.push(T2('ℹ الملف بلا كود طالب (إصدار قديم أو وضع المعلم)','ℹ No student code in the file (older version or teacher mode)'));
+      if(d.profileIntegrity==='failed')flags.push(T2('⚠ تم اكتشاف تعديل يدوي في بيانات تسجيل الطالب','⚠ A manual change to the student registration data was detected'));
+      return {f,name,code,year,sid:sh.sheetId,title:sh.title,gr,flags,ents};
+    });
+    const good=rows.filter(r=>!r.bad),byCode={},byName={},bySheet={};
+    good.forEach(r=>{
+      if(r.code){(byCode[r.code]=byCode[r.code]||new Set()).add(r.name);(byName[r.name]=byName[r.name]||new Set()).add(r.code)}
+      const k=r.code+'|'+r.sid;bySheet[k]=(bySheet[k]||0)+1;
+    });
+    good.forEach(r=>{
+      if(r.code&&byCode[r.code].size>1)r.flags.push(T2('⚠ نفس الكود مسجل بأسماء مختلفة','⚠ The same code appears with different names'));
+      if(r.code&&byName[r.name].size>1)r.flags.push(T2('⚠ نفس الاسم مسجل بأكواد مختلفة','⚠ The same name appears with different codes'));
+      if(r.code&&bySheet[r.code+'|'+r.sid]>1)r.flags.push(T2('ℹ تسليم مكرر لنفس الشيت','ℹ Duplicate submission for the same sheet'));
+    });
+    rvRows=good.map(r=>[r.name,r.code,YR[r.year]?yearName(r.year):'',r.title,r.gr.isBalanced?T2('نعم','Yes'):T2('لا','No'),r.gr.totalScore,r.gr.maxScore,r.gr.modelCount?r.gr.matched+'/'+r.gr.modelCount:'',r.flags.join(' | '),r.gr.notes.join(' | ')]);
+    const avg=good.length?Math.round(good.reduce((p,r)=>p+r.gr.totalScore/r.gr.maxScore,0)/good.length*100):0;
+    const entLine=e=>e.debits.map(x=>`${T2('من حـ/','From A/C')} ${esc(x.a)} ${fmt(x.m)}`).join(' + ')+' ← '+e.credits.map(x=>`${T2('إلى حـ/','To A/C')} ${esc(x.a)} ${fmt(x.m)}`).join(' + ');
+    const th=t=>`<th class="p-2">${t}</th>`;
+    G('rvOut').innerHTML=`<div class="flex flex-wrap justify-between items-center gap-2 mb-2"><div class="text-sm font-bold">${T2('عدد التسليمات','Submissions')}: ${good.length} — ${T2('متوسط الدرجات','Average')}: ${avg}%</div><button onclick="exportReview()" class="text-xs bg-slate-700 text-white px-3 py-1.5 rounded">${T2('📊 تصدير النتائج CSV','📊 Export results CSV')}</button></div>
+     <table class="w-full text-right text-sm"><thead><tr class="bg-slate-100 text-slate-600">${th(T2('الطالب','Student'))}${th(T2('الكود','Code'))}${th(T2('الفرقة','Year'))}${th(T2('الشيت','Sheet'))}${th(T2('الميزان','Balance'))}${th(T2('الدرجة','Score'))}${th(T2('قيود صحيحة','Correct'))}${th(T2('تنبيهات','Alerts'))}${th('')}</tr></thead><tbody>`
+     +rows.map(r=>r.bad?`<tr class="border-t"><td colspan="9" class="p-2"><span class="font-bold">${esc(r.f)}</span> — <span class="text-slate-600 text-sm">${T2('ملف مرفق (ليس ملف إجابة آلي): يُراجَع يدوياً','Attached file (not an automatic answer file): review it manually')}</span> <a href="${bUrl(r.file)}" download="${esc(r.f)}" class="text-indigo-700 underline text-sm mr-2">⬇ ${T2('فتح / تنزيل','Open / download')}</a>${r.file&&/^image\//.test(r.file.type)?`<img src="${bUrl(r.file)}" alt="" class="max-h-48 mt-2 rounded border">`:''}</td></tr>`:`<tr class="border-t align-top"><td class="p-2 font-bold">${esc(r.name)}</td><td class="p-2 font-mono">${esc(r.code)||'—'}</td><td class="p-2">${YR[r.year]?esc(yearName(r.year)):'—'}</td><td class="p-2">${esc(r.title)}</td><td class="p-2">${r.gr.isBalanced?'✅':'❌'}</td><td class="p-2 font-bold">${r.gr.totalScore} / ${r.gr.maxScore}</td><td class="p-2">${r.gr.modelCount?r.gr.matched+' / '+r.gr.modelCount:'—'}</td><td class="p-2 text-xs">${r.flags.map(esc).join('<br>')}</td><td class="p-2"><details><summary class="cursor-pointer text-indigo-700">${T2('تفاصيل','Details')}</summary><ul class="list-disc pr-5 text-xs mt-1">${r.gr.notes.map(n=>`<li>${esc(n)}</li>`).join('')}</ul><div class="mt-2 text-xs space-y-1">${r.ents.map((e,i)=>`<div>${i+1}) ${esc(e.desc)}: ${entLine(e)}</div>`).join('')}</div></details></td></tr>`).join('')+'</tbody></table>';
+    if(inp)inp.value='';
+}
+function exportReview(){
+  if(!rvRows.length)return;
+  const head=[T2('الطالب','Student'),T2('الكود','Code'),T2('الفرقة','Year'),T2('الشيت','Sheet'),T2('الميزان متوازن','Balanced'),T2('الدرجة','Score'),T2('من','Out of'),T2('القيود الصحيحة','Correct entries'),T2('تنبيهات','Alerts'),T2('ملاحظات','Notes')];
+  const csv='\ufeff'+[head,...rvRows].map(r=>r.map((c,i)=>i===1&&c?'="'+c+'"':csvCell(c)).join(',')).join('\n');
+  dlFile('results.csv',csv,'text/csv;charset=utf-8');
+}
+
+// ===== تسجيل دخول الطالب (محلي) =====
+const MAXEDIT=2,COOL=6*3600*1000,PSALT='acc-profile-v1';
+const YR={1:['الفرقة الأولى','First year'],2:['الفرقة الثانية','Second year'],3:['الفرقة الثالثة','Third year'],4:['الفرقة الرابعة','Fourth year']};
+const yearName=y=>YR[y]?T2(YR[y][0],YR[y][1]):'—';
+let profMem=null,lgMode='first';
+const pSig=p=>h53([PSALT,p.role,p.name||'',p.code||'',p.year||'',p.edit_count||0,p.last_edit_time||0,p.created_at||0].join('|'));
+function getProfile(){
+  let p=null;
+  try{p=JSON.parse(localStorage.getItem('student_profile'))}catch(x){}
+  if(!p)p=profMem;
+  if(!p||typeof p!=='object'||(p.role!=='student'&&p.role!=='teacher'))return null;
+  const ok=p.sig===pSig(p);
+  if(p.role==='teacher'&&(!ok||!p.gate))return null;
+  return {...p,_ok:ok};
+}
+function saveProfile(p){
+  const q={...p};delete q._ok;q.sig=pSig(q);profMem=q;
+  try{localStorage.setItem('student_profile',JSON.stringify(q))}
+  catch(x){alert(T2('تعذر حفظ البيانات على هذا المتصفح (ربما وضع التصفح الخاص). ستعمل الجلسة الحالية فقط.','Could not save your details in this browser (maybe private mode). Only this session will work.'))}
+}
+const toWest=t=>t.replace(/[\u0660-\u0669]/g,d=>d.charCodeAt(0)-0x660).replace(/[\u06F0-\u06F9]/g,d=>d.charCodeAt(0)-0x6F0);
+const CODE_RANGES={1:[20000,320000],2:[320001,500000],3:[500001,700000],4:[700001,900000]}; // عدّلها هنا وفي جدول year_ranges بالسحابة
+function lgValidate(){
+  const name=G('lgName').value.replace(/\s+/g,' ').trim(),code=toWest(G('lgCode').value.trim()),year=G('lgYear').value,errs=[];
+  const parts=name.split(' ').filter(Boolean);
+  if(parts.length<3||parts.some(w=>w.length<2))errs.push(T2('اكتب الاسم الثلاثي كاملاً (ثلاث كلمات على الأقل).','Enter your full three-part name (at least three words).'));
+  else if(!/^[\u0621-\u0652a-zA-Z ]+$/.test(name))errs.push(T2('الاسم يجب أن يحتوي حروفاً فقط (بدون أرقام أو رموز).','The name must contain letters only (no digits or symbols).'));
+  if(!/^\d{3,12}$/.test(code))errs.push(T2('كود الطالب أرقام فقط (من 3 إلى 12 رقماً).','The student code must be digits only (3 to 12 digits).'));
+  if(!YR[year])errs.push(T2('اختر الفرقة.','Choose your year.'));
+  else if(/^\d{3,12}$/.test(code)&&CODE_RANGES[year]){
+    const [lo,hi]=CODE_RANGES[year],n=parseInt(code,10);
+    if(n<lo||n>hi)errs.push('الكود غير مدرج بالقائمه.');
+  }
+  return {name,code,year,errs};
+}
+function editBlock(p){
+  if((p.edit_count||0)>=MAXEDIT)return T2('لقد استنفدت الحد الأقصى لمحاولات تعديل البيانات','You have used the maximum number of data edits');
+  if(p.last_edit_time){
+    const el=Date.now()-p.last_edit_time;
+    if(el<0)return T2('لا يمكنك تعديل بياناتك إلا بعد مرور 6 ساعات من آخر تعديل (تم اكتشاف تغيير في ساعة الجهاز).','You cannot edit your details until 6 hours after the last edit (a device clock change was detected).');
+    if(el<COOL){const m=Math.ceil((COOL-el)/60000);return T2(`لا يمكنك تعديل بياناتك إلا بعد مرور 6 ساعات من آخر تعديل (المتبقي: ${Math.floor(m/60)} ساعة و${m%60} دقيقة).`,`You cannot edit your details until 6 hours after the last edit (remaining: ${Math.floor(m/60)} h ${m%60} min).`)}
+  }
+  return '';
+}
+function editProfile(){const p=getProfile();if(!p||p.role!=='student')return;const b=editBlock(p);if(b)return alert(b);loginOpen('edit')}
+function loginOpen(mode){
+  lgMode=mode;const p=getProfile(),ed=mode==='edit'&&p&&p.role==='student';
+  G('lgT').textContent=ed?T2('تعديل بيانات الطالب','Edit student details'):T2('تسجيل بيانات الطالب','Student registration');
+  G('lgName').value=ed?p.name:'';G('lgCode').value=ed?p.code:'';G('lgYear').value=ed?String(p.year):'';
+  G('lgErr').classList.add('hidden');
+  G('lgCancel').classList.toggle('hidden',mode==='first');
+  G('lgTeacher').classList.toggle('hidden',mode!=='first');
+  G('loginOv').classList.remove('hidden');G('appRoot').inert=true;
+  setTimeout(()=>G('lgName').focus(),50);
+}
+function loginClose(){
+  G('loginOv').classList.add('hidden');G('appRoot').inert=false;
+  renderProfile();renderSheets();
+  if(!store.get('acc_tour',0))setTimeout(tourStart,500);
+}
+function loginCancel(){if(lgMode==='first')return;G('loginOv').classList.add('hidden');G('appRoot').inert=false}
+function loginSubmit(){
+  const v=lgValidate(),er=G('lgErr');
+  if(v.errs.length){er.innerHTML=v.errs.map(esc).join('<br>');er.classList.remove('hidden');return}
+  er.classList.add('hidden');
+  const old=getProfile(),editing=lgMode==='edit'&&old&&old.role==='student';
+  if(editing){
+    if(v.name===old.name&&v.code===old.code&&String(v.year)===String(old.year)){alert(T2('لم تتغير البيانات، ولم يُحتسب أي تعديل.','Nothing changed, so no edit was counted.'));loginCancel();return}
+    const lim=editBlock(old);if(lim){alert(lim);loginCancel();return}
+  }
+  const left=editing?MAXEDIT-old.edit_count-1:0;
+  const ask=T2(`راجع بياناتك قبل الحفظ:\nالاسم: ${v.name}\nالكود: ${v.code}\nالفرقة: ${yearName(v.year)}`+(editing?`\n\nسيُحتسب هذا تعديلاً (المتبقي بعده: ${left}).`:'')+'\n\nهل البيانات صحيحة؟',
+    `Review your details before saving:\nName: ${v.name}\nCode: ${v.code}\nYear: ${yearName(v.year)}`+(editing?`\n\nThis will count as an edit (remaining after it: ${left}).`:'')+'\n\nAre these details correct?');
+  if(!confirm(ask))return;
+  const now=Date.now();
+  const prof=editing?{...old,name:v.name,code:v.code,year:v.year,edit_count:old.edit_count+1,last_edit_time:now}
+    :{role:'student',name:v.name,code:v.code,year:v.year,edit_count:0,last_edit_time:0,created_at:now};
+  const finish=()=>{saveProfile(prof);loginClose();cloudAfterLogin()};
+  if(cloudOn()){
+    const btn=G('lgOk');if(btn)btn.disabled=true;
+    cloudStudentSave(prof).then(r=>{
+      if(btn)btn.disabled=false;
+      if(r.ok)finish();else{er.textContent=r.msg;er.classList.remove('hidden')}
+    });
+  }else finish();
+}
+// ===== بوابة المعلم =====
+const T_DEF='r6bnp9h1si',E_HASH='tp0uw2vcmh',TMAX=5;
+let tMode='pass',tFailMem=0;
+const tHash=v=>h53('edu-t1|'+v);
+const isTeacher=()=>{const p=getProfile();return !!p&&p.role==='teacher'};
+function tCode(){try{return localStorage.getItem('edu_thash')||T_DEF}catch(x){return T_DEF}}
+function setTCode(v){try{localStorage.setItem('edu_thash',tHash(v))}catch(x){alert(T2('تعذر حفظ الرمز الجديد على هذا المتصفح.','Could not save the new code in this browser.'))}}
+function tFailGet(){let n=tFailMem;try{n=Math.max(n,parseInt(localStorage.getItem('edu_tfail'))||0)}catch(x){}return n}
+function tFailSet(n){tFailMem=n;try{localStorage.setItem('edu_tfail',String(n))}catch(x){}}
+function tShow(mode){
+  tMode=mode;const inp=G('tIn');inp.value='';G('tErr').classList.add('hidden');
+  const M={
+    pass:[T2('دخول المعلم','Teacher access'),T2('أدخل رمز المعلم السري.','Enter the secret teacher code.'),'password',T2('تأكيد','Confirm')],
+    emerg:[T2('تحقق إضافي','Additional verification'),T2('من هو مبرمج المنصه؟','Who is the platform developer?'),'text',T2('تأكيد','Confirm')],
+    reset:[T2('تعيين رمز جديد','Set a new code'),T2('تم التحقق. اكتب رمز معلم جديداً (6 أحرف على الأقل) لإعادة تعيين الرمز، أو اتركه فارغاً للدخول بالرمز الحالي.','Verified. Type a new teacher code (at least 6 characters) to reset it, or leave it empty to enter with the current code.'),'password',T2('دخول','Enter')],
+    chgcur:[T2('تغيير رمز المعلم','Change teacher code'),T2('أدخل الرمز الحالي أولاً للتحقق (لديك 3 محاولات فقط).','Enter the current code first to verify (you have 3 attempts only).'),'password',T2('تحقق','Verify')],
+    change:[T2('تغيير رمز المعلم','Change teacher code'),T2('اكتب الرمز الجديد (6 أحرف على الأقل).','Type the new code (at least 6 characters).'),'password',T2('حفظ','Save')]
+  }[mode];
+  G('tT').textContent=M[0];G('tMsg').textContent=M[1];inp.type=M[2];G('tOk').textContent=M[3];
+  inp.placeholder=mode==='emerg'?'English only':'';
+  setTimeout(()=>inp.focus(),30);
+}
+function tOpen(mode){
+  if(mode!=='change'){const eb=tEmBlock();if(eb){alert(eb);return}}
+  if(mode==='change'){const b=tChgBlock();if(b){alert(b);return}tChgOK=false;mode='chgcur'}
+  G('tOv').classList.remove('hidden');tShow(mode||(tFailGet()>=TMAX?'emerg':'pass'))
+}
+function tClose(){G('tOv').classList.add('hidden')}
+function loginTeacher(){tOpen()}
+function tEnter(){tClose();saveProfile({role:'teacher',gate:1,edit_count:0,last_edit_time:0,created_at:Date.now()});loginClose()}
+function tSubmit(){
+  const v=G('tIn').value.trim(),err=m=>{G('tErr').textContent=m;G('tErr').classList.remove('hidden')};
+  G('tErr').classList.add('hidden');
+  if(tMode==='pass'){
+    if(tHash(v)===tCode()){tFailSet(0);tEnter();return}
+    const n=tFailGet()+1;tFailSet(n);G('tIn').value='';
+    if(n>=TMAX)tShow('emerg');else err(T2('الرمز غير صحيح.','Incorrect code.'));
+  }else if(tMode==='emerg'){
+    const eb=tEmBlock();if(eb){tClose();alert(eb);return}
+    if(h53('edu-e1|'+v)===E_HASH){tFailSet(0);tEmSave({n:0,start:0,until:0});tShow('reset')}
+    else{
+      G('tIn').value='';const n=tEmState().n+1;
+      if(n>=TEM_MAX){const now=Date.now();tEmSave({n:0,start:now,until:now+TEM_LOCK});tClose();alert(T2('3 إجابات خاطئة متتالية. تم قفل وضع المعلم لمدة 24 ساعة.','Three wrong answers in a row. Teacher mode is locked for 24 hours.'))}
+      else{tEmSave({n,start:0,until:0});err(T2(`إجابة غير صحيحة. المتبقي ${TEM_MAX-n} محاولة قبل القفل 24 ساعة.`,`Incorrect answer. Attempts left before the 24-hour lock: ${TEM_MAX-n}.`))}
+    }
+  }else if(tMode==='reset'){
+    if(v===''){tEnter();return}
+    if(v.length<6)return err(T2('الرمز يجب ألا يقل عن 6 أحرف.','The code must be at least 6 characters.'));
+    setTCode(v);tEnter();
+  }else if(tMode==='chgcur'){
+    const blk=tChgBlock();if(blk){tClose();alert(blk);return}
+    if(tHash(v)===tCode()){tChgSave({n:0,start:0,until:0});tChgOK=true;tShow('change');return}
+    const n=tChgState().n+1;G('tIn').value='';
+    if(n>=TCHG_MAX){const now=Date.now();tChgSave({n:0,start:now,until:now+TCHG_LOCK});tClose();alert(T2('أخطأت 3 مرات. تم حظرك من محاولة تغيير الرمز لمدة 10 ساعات.','Three wrong attempts. You are blocked from changing the code for 10 hours.'))}
+    else{tChgSave({n,start:0,until:0});err(T2(`الرمز الحالي غير صحيح. المتبقي ${TCHG_MAX-n} محاولة.`,`The current code is incorrect. Attempts left: ${TCHG_MAX-n}.`))}
+  }else if(tMode==='change'){
+    if(!tChgOK){tShow('chgcur');return}
+    if(v.length<6)return err(T2('الرمز يجب ألا يقل عن 6 أحرف.','The code must be at least 6 characters.'));
+    tChgOK=false;setTCode(v);tClose();alert(T2('تم تغيير رمز المعلم.','Teacher code changed.'));
+  }
+}
+function renderProfile(){
+  const p=getProfile(),bar=G('profBar'),who=G('stWho');
+  const isT=!!p&&p.role==='teacher';['tCard1','tCard2'].forEach(k=>G(k).classList.toggle('hidden',!isT));
+  if(!p){bar.classList.add('hidden');who.textContent='';return}
+  bar.classList.remove('hidden');
+  if(p.role==='teacher'){
+    bar.innerHTML=`<span>👩‍🏫 <b>${T2('وضع المعلم','Teacher mode')}</b></span><button onclick="tOpen('change')" class="text-xs bg-white/20 hover:bg-white/30 rounded px-3 py-1">🔑 ${T2('تغيير الرمز','Change code')}</button><button onclick="loginOpen('switch')" class="text-xs bg-white/20 hover:bg-white/30 rounded px-3 py-1 mr-auto">${T2('تسجيل كطالب','Sign in as a student')}</button>`;
+    who.textContent=T2('وضع المعلم: لا يمكن تصدير إجابات الطلاب من هنا.','Teacher mode: student answers cannot be exported here.');
+    return;
+  }
+  const left=Math.max(0,MAXEDIT-(p.edit_count||0));
+  bar.innerHTML=`<span>👤 <b>${esc(p.name)}</b></span><span>🆔 ${T2('الكود','Code')}: ${esc(p.code)}</span><span>🎓 ${esc(yearName(p.year))}</span>`
+    +(p._ok?'':`<span class="text-amber-300 font-bold">⚠ ${T2('تم اكتشاف تعديل يدوي في بيانات التسجيل','Manual change to registration data detected')}</span>`)
+    +`<button onclick="editProfile()" title="${T2('تعديل البيانات','Edit details')} (${T2('المتبقي','left')}: ${left})" class="bg-white/20 hover:bg-white/30 rounded px-2 py-1 mr-auto">✎</button>`;
+  who.textContent='👤 '+p.name+' — 🆔 '+p.code+' — 🎓 '+yearName(p.year);
+}
+
+// ===== اللغة: عربي / English =====
+const PHR=`أدخل بياناتك كما هي مسجلة في المعهد. تُحفظ على هذا الجهاز فقط، وتُضاف إلى ملفات إجابات الشيتات التي ترسلها لمعلمك.=>Enter your details exactly as registered at the institute. They are stored on this device only and added to the sheet answer files you send to your teacher.
+الاسم الثلاثي=>Full name (three names)
+كود الطالب في المعهد (أرقام فقط)=>Institute student code (digits only)
+مثال: محمد أحمد علي=>e.g. Mohamed Ahmed Ali
+مثال: 123456=>e.g. 123456
+اختر الفرقة...=>Select year...
+الفرقة الأولى=>First year
+الفرقة الثانية=>Second year
+الفرقة الثالثة=>Third year
+الفرقة الرابعة=>Fourth year
+⚠️ بالرجاء الحذر من كتابة الاسم أو الكود بطريقة خاطئة لأنه يحرمك من درجات الأنشطة المعطاة طوال العام=>⚠️ Please be careful when typing your name or code: a mistake can cost you your marks for the activities given throughout the year
+دخول المعلم (بدون بيانات طالب)=>Teacher access (no student details)
+📝 الشيتات=>📝 Assignments
+📋 الجداول المخصصة=>📋 Custom Tables
+🎒 للطالب: حل شيت من المعلم=>🎒 Student: solve a teacher's sheet
+استورد ملف الشيت الذي أرسله المعلم، ثم سجّل القيود المطلوبة في دفتر اليومية، وبعدها صدّر إجابتك لتُرسلها للمعلم مع تقرير التصحيح الآلي.=>Import the sheet file your teacher sent, record the required entries in the journal, then export your answer with its automatic grading report and send it back.
+اسمك الكامل=>Your full name
+📥 استيراد شيت تدريب=>📥 Import practice sheet
+📤 تصدير إجابة الشيت=>📤 Export sheet answer
+إنهاء الشيت=>End sheet
+👩‍🏫 للمعلم: إنشاء شيت تمرين=>👩‍🏫 Teacher: create an exercise sheet
+عند التصدير ستختار: «حل تلقائي» (تقييم آلي حسب عدد القيود بالحل) أو «وضع الحل في دفتر اليومية» (سجّل القيود الصحيحة في الدفتر أولاً). الحل لا يظهر نصياً داخل الملف.=>When you export you will choose: “Automatic solution” (automatic grading by the number of entries in the solution) or “Put the solution in the journal” (record the correct entries in the journal first). The solution is not stored as readable text in the file.
+عنوان الشيت=>Sheet title
+الدرجة النهائية=>Max score
+عدد القيود المتوقع=>Expected number of entries
+نص التمرين / التعليمات=>Exercise text / instructions
+تضمين دليل الحسابات الحالي=>Include the current chart of accounts
+📤 تصدير شيت التمرين (للطلاب)=>📤 Export exercise sheet (for students)
+🧑‍🏫 للمعلم: معاينة وتقييم تسليمات الطلاب=>🧑‍🏫 Teacher: review and grade student submissions
+📥 اختيار ملفات إجابات الطلاب (أكثر من ملف مسموح)=>📥 Choose student answer files (multiple allowed)
+من مذكورين=>From the following accounts
+إلى مذكورين=>To the following accounts
+📈 المؤشرات المالية=>📈 Financial indicators
+لوحة المؤشرات المالية=>Financial indicators dashboard
+🌳 دليل الحسابات الشجري=>🌳 Chart of accounts (tree)
+اسم الحساب الجديد=>New account name
+الكود (اختياري، يُولَّد تلقائياً)=>Code (optional, auto-generated)
+إضافة حساب=>Add account
+ترقيم الحسابات غير المرقمة تلقائياً=>Auto-number accounts without a code
+📉 جدول إهلاك الأصول الثابتة=>📉 Fixed asset depreciation schedule
+تكلفة الأصل=>Asset cost
+قيمة الخردة=>Salvage value
+العمر الإنتاجي (سنوات)=>Useful life (years)
+القسط الثابت=>Straight-line
+القسط المتناقص (نسبة ثابتة)=>Declining balance (fixed rate)
+نسبة الإهلاك المتناقص %=>Declining rate %
+سنة البداية=>Start year
+إنشاء الجدول=>Build schedule
+تسجيل قيود كل السنوات=>Post all years' entries
+قيد إهلاك=>Depreciation entry
+مصروف إهلاك=>Depreciation expense
+مجمع إهلاك=>Accumulated depreciation
+الأصول المتداولة=>Current assets
+الأصول الثابتة=>Fixed assets
+الخصوم المتداولة=>Current liabilities
+الخصوم طويلة الأجل=>Long-term liabilities
+أصول متداولة=>Current assets
+أصول ثابتة=>Fixed assets
+خصوم متداولة=>Current liabilities
+خصوم طويلة الأجل=>Long-term liabilities
+حسابات بدون كود=>Accounts without a code
+❓ جولة=>❓ Tour
+❓ لماذا القيد غير متوازن؟=>❓ Why is my entry unbalanced?
+ما هذا؟=>What is this?
+المنصة التعليمية للمحاسبة المالية=>Financial Accounting Learning Platform
+قيود اليومية (بسيطة ومركبة) ← دفتر الأستاذ ← ميزان المراجعة=>Journal entries (simple & compound) → Ledger → Trial balance
+📝 تسجيل قيد يومية=>📝 Record a journal entry
+الأطراف المدينة (من حـ/)=>Debit side (From A/C)
+الأطراف الدائنة (إلى حـ/)=>Credit side (To A/C)
++ سطر مدين=>+ Debit line
++ سطر دائن=>+ Credit line
+البيان: مثال: شراء بضاعة نقداً=>Description, e.g. cash purchase of goods
+حفظ القيد والترحيل التلقائي 🚀=>Save entry & auto-post 🚀
+دفتر اليومية=>Journal
+دفتر الأستاذ=>Ledger
+ميزان المراجعة بالأرصدة=>Trial balance
+ميزان المراجعة=>Trial balance
+القوائم المالية=>Financial statements
+🎓 التمارين=>🎓 Exercises
+🧰 تسويات وأدوات=>🧰 Adjustments & tools
+📊 ورقة تدريب (Excel)=>📊 Practice sheet (Excel)
+🖨️ طباعة / PDF=>🖨️ Print / PDF
+📑 PDF كامل (التقرير المحاسبي)=>📑 Full PDF (accounting report)
+📄 حفظ PDF (القسم الحالي)=>📄 Save PDF (current section)
+📄 حفظ PDF=>📄 Save PDF
+حفظ القسم الحالي كملف PDF=>Save the current section as a PDF file
+💾 نسخة احتياطية=>💾 Backup
+📂 استرجاع=>📂 Restore
+📊 تصدير Excel=>📊 Export Excel
+🧹 مسح القيود (يُبقي دليل الحسابات)=>🧹 Clear entries (keeps chart of accounts)
+يحذف القيود فقط ويُبقي دليل الحسابات والأكواد=>Deletes entries only and keeps the chart of accounts and codes
+⚠ إعادة ضبط كاملة=>⚠ Full reset
+⚙️ إظهار أكواد الحسابات=>⚙️ Show account codes
+إعادة ضبط كاملة: سيُحذف كل شيء (القيود والحسابات المضافة والأكواد والجداول المخصصة) ويعود الدليل الافتراضي. متابعة؟=>Full reset: everything (entries, added accounts, codes and custom tables) will be deleted and the default chart restored. Continue?
+🔍 بحث في البيان أو اسم الحساب=>🔍 Search description or account
+لا توجد قيود.=>No entries.
+لا توجد بيانات.=>No data.
+سجّل قيداً لتظهر حسابات الأستاذ.=>Record an entry to see ledger accounts.
+من حـ/=>From A/C
+إلى حـ/=>To A/C
+حـ/=>A/C
+منه (مدين)=>Dr (Debit)
+له (دائن)=>Cr (Credit)
+الرصيد:=>Balance:
+رصيد مدين=>Debit balance
+رصيد دائن=>Credit balance
+متوازن (0)=>Balanced (0)
+الميزان متوازن ✅=>Trial balance is balanced ✅
+الميزان غير متوازن ❌=>Trial balance is not balanced ❌
+تنبيه: توازن الميزان لا يعني خلو الدفاتر من الأخطاء (كاختيار حساب خاطئ بنفس المبلغ).=>Note: a balanced trial balance does not guarantee error-free books (e.g. a wrong account with the same amount).
+أدخل الحسابات والمبالغ=>Enter accounts and amounts
+مجموع المدين=>Total debit
+مجموع الدائن=>Total credit
+القيد متوازن ✅=>Entry balanced ✅
+القيد غير متوازن ⚠️=>Entry not balanced ⚠️
+أدخل طرفاً مديناً وآخر دائناً على الأقل، مع مبلغ لكل طرف.=>Enter at least one debit and one credit line, each with an amount.
+القيد غير متوازن: مجموع المدين يجب أن يساوي مجموع الدائن.=>Entry not balanced: total debit must equal total credit.
+لا يمكن أن يظهر الحساب نفسه في الجانبين المدين والدائن.=>The same account cannot appear on both debit and credit sides.
+حذف هذا القيد؟=>Delete this entry?
+مسح جميع القيود؟ (دليل الحسابات سيبقى)=>Delete all entries? (the chart of accounts is kept)
+سيتم استبدال البيانات الحالية. متابعة؟=>Current data will be replaced. Continue?
+ملف غير صالح=>Invalid file
+اختر الحساب...=>Select account...
+الحساب...=>Account...
+➕ إضافة مدين=>➕ Add debit account
+➕ إضافة دائن=>➕ Add credit account
+اكتب اسم الحساب الجديد=>New account name
+حذف السطر=>Delete line
+حذف القيد=>Delete entry
+نوع الحساب=>Account type
+مصروف الأجور=>Wages expense
+مصروف الإيجار=>Rent expense
+رأس المال=>Capital
+النقدية=>Cash
+البنك=>Bank
+الأثاث=>Furniture
+المشتريات=>Purchases
+المبيعات=>Sales
+العملاء=>Customers
+الموردون=>Suppliers
+(أصول)=>(Assets)
+(خصوم)=>(Liabilities)
+(حقوق ملكية)=>(Equity)
+(إيرادات)=>(Revenue)
+(مصروفات)=>(Expenses)
+تزيد بالمدين وتنقص بالدائن=>increases with debit, decreases with credit
+تزيد بالدائن وتنقص بالمدين=>increases with credit, decreases with debit
+قائمة الدخل=>Income statement
+المركز المالي (الميزانية)=>Balance sheet
+المركز المالي=>Balance sheet
+إجمالي الإيرادات=>Total revenue
+إجمالي المصروفات=>Total expenses
+إجمالي الأصول=>Total assets
+إجمالي الخصوم=>Total liabilities
+إجمالي حقوق الملكية=>Total equity
+الخصوم + حقوق الملكية=>Liabilities + Equity
+حقوق الملكية=>Equity
+الإيرادات=>Revenue
+المصروفات=>Expenses
+الأصول=>Assets
+الخصوم=>Liabilities
+صافي ربح الفترة=>Net profit for the period
+صافي خسارة الفترة=>Net loss for the period
+صافي الربح=>Net profit
+صافي الخسارة=>Net loss
+الأصول = الخصوم + حقوق الملكية ✅=>Assets = Liabilities + Equity ✅
+المعادلة غير متوازنة ❌ راجع تصنيف الحسابات=>Equation not balanced ❌ check account classification
+حسابات غير مصنفة، صنّفها لتظهر في القوائم:=>Unclassified accounts, classify them to include them in the statements:
+اختر النوع=>Select type
+خبير محاسبة 🏆=>Accounting Expert 🏆
+محاسب ماهر ⭐=>Skilled Accountant ⭐
+محاسب ناشئ 📘=>Junior Accountant 📘
+مبتدئ 🌱=>Beginner 🌱
+🎯 اختبار سريع (5 أسئلة)=>🎯 Quick quiz (5 questions)
+إعادة ضبط=>Reset
+آخر الاختبارات:=>Recent quizzes:
+مبتدئ —=>Beginner —
+متوسط —=>Intermediate —
+متقدم —=>Advanced —
+نقطة للتمرين=>points per exercise
+اختبار سريع: سؤال=>Quick quiz: question
+تمرين=>Exercise
+نقطة=>pts
+من حـ/ (مدين)=>From A/C (Debit)
+إلى حـ/ (دائن)=>To A/C (Credit)
+تحقق ✔=>Check ✔
+💡 تلميح=>💡 Hint
+👁 عرض الحل=>👁 Show solution
+التالي ▶=>Next ▶
+عرض النتيجة=>Show result
+✅ إجابة صحيحة!=>✅ Correct!
+❌ راجع الآتي:=>❌ Please review:
+الحل الصحيح:=>Correct solution:
+ممتاز! 🌟=>Excellent! 🌟
+جيد، استمر 👍=>Good, keep going 👍
+راجع التمارين وجرّب مرة أخرى 📚=>Review the exercises and try again 📚
+📥 أرصدة أول المدة (قيد افتتاحي)=>📥 Opening balances (opening entry)
+ترحيل القيد الافتتاحي=>Post opening entry
+🛠 قيود التسوية (آخر الفترة)=>🛠 Adjusting entries (period end)
+نوع التسوية=>Adjustment type
+تسجيل قيد التسوية=>Record adjusting entry
+إهلاك أصل=>Asset depreciation
+مصروف مستحق (لم يُدفع)=>Accrued expense (unpaid)
+مصروف مدفوع مقدماً (يخص فترة قادمة)=>Prepaid expense (next period)
+إيراد مستحق (لم يُحصَّل)=>Accrued revenue (uncollected)
+إيراد محصَّل مقدماً (يخص فترة قادمة)=>Unearned revenue (next period)
+ديون معدومة=>Bad debts
+🔒 قيود الإقفال=>🔒 Closing entries
+إقفال الحسابات=>Close the books
+🧾 ضريبة القيمة المضافة=>🧾 Value added tax (VAT)
+عملية بيع=>Sale transaction
+عملية شراء=>Purchase transaction
+المبلغ قبل الضريبة=>Amount before tax
+المبلغ شامل الضريبة=>Amount including tax
+تسجيل القيد بالضريبة=>Record entry with tax
+قبل الضريبة:=>Before tax:
+الضريبة:=>Tax:
+الإجمالي:=>Total:
+🏦 تسوية البنك=>🏦 Bank reconciliation
+رصيد كشف البنك=>Bank statement balance
+رصيد البنك بالدفاتر=>Bank balance per books
+جلب رصيد البنك من الدفاتر=>Fetch bank balance from books
+التسوية صحيحة ✅=>Reconciliation is correct ✅
+📒 دفتر النقدية / أي حساب=>📒 Cash book / any account
+مدين / مقبوضات=>Debit / Receipts
+دائن / مدفوعات=>Credit / Payments
+📦 المخزون (FIFO / المتوسط المتحرك)=>📦 Inventory (FIFO / moving average)
+بيع (الكمية فقط)=>Sale (quantity only)
++ حركة=>+ Movement
+المتوسط المتحرك=>Moving average
+تكلفة البضاعة المباعة=>Cost of goods sold
+مخزون آخر المدة=>Ending inventory
+قيد افتتاحي (أرصدة أول المدة)=>Opening entry
+قيد تسوية:=>Adjusting entry:
+قيد إقفال=>Closing entry
+خانة الدرجات=>Score field
+عدد القيود بالحل=>Entries in the solution`.split('\n').map(l=>l.split('=>'));
+const EXM=Object.fromEntries(`التاريخ=>Date
+البيان=>Description
+الحساب=>Account
+مدين=>Debit
+دائن=>Credit
+المبلغ=>Amount
+الإجمالي=>Total
+الرصيد=>Balance
+الطريقة=>Method
+الأصل=>Asset
+الفرقة=>Year
+دخول=>Enter
+إلغاء=>Cancel
+تأكيد=>Confirm
+شراء=>Purchase
+نقداً=>Cash
+على الحساب=>On credit
+إغلاق=>Close
+احسب=>Calculate
+اليومية=>Journal
+أصول=>Assets
+خصوم=>Liabilities
+حقوق ملكية=>Equity
+إيرادات=>Revenue
+مصروفات=>Expenses
+مبتدئ=>Beginner
+متوسط=>Intermediate
+متقدم=>Advanced`.split('\n').map(l=>l.split('=>')));
+PHR.sort((x,y)=>y[0].length-x[0].length);
+function tr(str){
+  const t=str.trim();
+  if(EXM[t])return str.replace(t,EXM[t]);
+  for(const [a,b] of PHR)if(str.includes(a))str=str.split(a).join(b);
+  return str;
+}
+function setLang(){store.set('acc_lang',LANG==='en'?'ar':'en');location.reload()}
+function applyLang(){
+  if(LANG!=='en')return;
+  document.documentElement.lang='en';document.documentElement.dir='ltr';document.title='EDU_Acc';
+  const A=window.alert,C=window.confirm;
+  window.alert=m=>A(tr(String(m)));window.confirm=m=>C(tr(String(m)));
+  const walk=root=>{
+    const w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT),list=[];let n;
+    while((n=w.nextNode()))list.push(n);
+    list.forEach(n=>{
+      const p=n.parentNode;
+      if(!p||p.tagName==='SCRIPT'||p.tagName==='STYLE'||(p.tagName==='OPTION'&&!p.hasAttribute('value')))return;
+      const v=tr(n.nodeValue);if(v!==n.nodeValue)n.nodeValue=v;
+    });
+    if(root.querySelectorAll)root.querySelectorAll('[placeholder],[title]').forEach(el=>['placeholder','title'].forEach(a=>{if(el.hasAttribute(a))el.setAttribute(a,tr(el.getAttribute(a)))}));
+  };
+  walk(document.body);
+  new MutationObserver(ms=>ms.forEach(m=>m.addedNodes.forEach(n=>{
+    if(n.nodeType===1)walk(n);else if(n.nodeType===3&&n.parentNode&&n.parentNode.nodeType===1)walk(n.parentNode);
+  }))).observe(document.body,{childList:true,subtree:true});
+}
+
+// ===== تعديل القيد المحفوظ + نوافذ الشيت =====
+let edId=null;
+function ensureModals(){
+  if(G('edOv'))return;
+  const w=document.createElement('div');
+  w.innerHTML=`
+  <div id="edOv" class="hidden" style="position:fixed;inset:0;z-index:10020;background:rgba(15,23,42,.75);overflow:auto">
+    <div class="bg-white rounded-xl shadow-xl max-w-2xl mx-auto my-6 p-5 space-y-3">
+      <div class="flex items-center justify-between"><h3 class="text-lg font-bold">✏️ ${T2('تعديل القيد','Edit entry')}</h3><button type="button" onclick="edClose()" class="text-slate-500 text-xl">✕</button></div>
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-2"><input id="edDate" type="date" class="p-2 rounded border"><input id="edDesc" placeholder="${T2('البيان','Description')}" class="p-2 rounded border sm:col-span-2"></div>
+      <div><div class="font-bold text-emerald-700 text-sm mb-1">${T2('الطرف المدين (من)','Debit side (From)')}</div><div id="edD" class="space-y-2"></div><button type="button" onclick="edRow('d')" class="text-xs text-indigo-700 mt-1">➕ ${T2('إضافة سطر مدين','Add debit line')}</button></div>
+      <div><div class="font-bold text-rose-700 text-sm mb-1">${T2('الطرف الدائن (إلى)','Credit side (To)')}</div><div id="edC" class="space-y-2"></div><button type="button" onclick="edRow('c')" class="text-xs text-indigo-700 mt-1">➕ ${T2('إضافة سطر دائن','Add credit line')}</button></div>
+      <div id="edStat" class="text-center font-bold rounded-lg p-2 bg-slate-100"></div>
+      <div id="edErr" class="hidden rounded-lg border border-rose-300 bg-rose-50 text-rose-700 text-sm p-2 font-semibold"></div>
+      <div class="flex gap-2 justify-end"><button type="button" onclick="edClose()" class="bg-slate-200 px-4 py-2 rounded">${T2('إلغاء','Cancel')}</button><button type="button" onclick="edSave()" class="bg-indigo-600 text-white px-4 py-2 rounded font-bold">${T2('حفظ التعديل','Save changes')}</button></div>
+    </div>
+  </div>
+  <div id="tcOv" class="hidden" style="position:fixed;inset:0;z-index:10030;background:rgba(15,23,42,.8);overflow:auto">
+    <div class="bg-white rounded-xl shadow-xl max-w-sm mx-auto my-16 p-5 space-y-3">
+      <h3 class="text-lg font-bold">☁ ${T2('دخول المعلم إلى السحابة','Teacher cloud sign-in')}</h3>
+      <p class="text-xs text-slate-600">${T2('أدخل بريد وكلمة مرور حساب المعلم المسجل في Supabase.','Enter the email and password of the teacher account created in Supabase.')}</p>
+      <input id="tcMail" type="email" dir="ltr" autocomplete="username" placeholder="email" class="w-full p-2 rounded border">
+      <input id="tcPass" type="password" dir="ltr" autocomplete="current-password" placeholder="password" class="w-full p-2 rounded border" onkeydown="if(event.key==='Enter')tcSubmit()">
+      <div id="tcErr" class="hidden rounded border border-rose-300 bg-rose-50 text-rose-700 text-sm p-2"></div>
+      <div class="flex gap-2 justify-end"><button type="button" onclick="tcClose(false)" class="bg-slate-200 px-4 py-2 rounded">${T2('إلغاء','Cancel')}</button><button type="button" onclick="tcSubmit()" class="bg-indigo-600 text-white px-4 py-2 rounded font-bold">${T2('دخول','Sign in')}</button></div>
+    </div>
+  </div>
+  <div id="solOv" class="hidden" style="position:fixed;inset:0;z-index:10020;background:rgba(15,23,42,.75);overflow:auto">
+    <div class="bg-white rounded-xl shadow-xl max-w-md mx-auto my-16 p-5 space-y-3">
+      <h3 class="text-lg font-bold">${T2('فضلاً وضع حل للشيت','Please provide a solution for the sheet')}</h3>
+      <p id="solMsg" class="text-sm text-slate-600"></p>
+      <div class="grid gap-2">
+        <button type="button" onclick="solChoose('auto')" class="bg-indigo-600 text-white px-4 py-3 rounded font-bold text-start">⚙️ ${T2('حل تلقائي','Automatic solution')}<div class="text-xs font-normal opacity-90">${T2('تصحيح آلي حسب توازن الميزان وعدد القيود بالحل','Automatic grading by trial-balance and the number of entries in the solution')}</div></button>
+        <button type="button" onclick="solChoose('journal')" class="bg-slate-700 text-white px-4 py-3 rounded font-bold text-start">📒 ${T2('وضع الحل في دفتر اليومية','Put the solution in the journal')}<div class="text-xs font-normal opacity-90">${T2('تصحيح دقيق بمقارنة قيود الطالب بالقيود التي تسجلها','Exact grading by comparing student entries with the entries you record')}</div></button>
+      </div>
+      <button type="button" onclick="solClose()" class="text-sm text-slate-500">${T2('إلغاء','Cancel')}</button>
+    </div>
+  </div>`;
+  while(w.firstChild)document.body.appendChild(w.firstChild);
+}
+function edOpts(sel){
+  const list=sortedAcc().slice();if(sel&&!list.includes(sel))list.push(sel);
+  return `<option value="">${T2('اختر الحساب...','Choose account...')}</option>`+list.map(a=>`<option value="${esc(a)}" ${a===sel?'selected':''}>${cp(a)}${esc(a)}</option>`).join('');
+}
+function edRow(side,x){
+  const div=document.createElement('div');div.className='flex gap-2 items-center';
+  div.innerHTML=`<select class="flex-1 min-w-0 p-2 rounded border bg-white" onchange="edCalc()">${edOpts(x&&x.a)}</select><input type="number" min="0" step="0.01" placeholder="${T2('المبلغ','Amount')}" class="em w-28 p-2 rounded border" value="${x?x.m:''}" oninput="edCalc()"><button type="button" onclick="edDel(this)" class="text-slate-400 hover:text-red-600 px-1" title="${T2('حذف السطر','Remove line')}">🗑</button>`;
+  G(side==='d'?'edD':'edC').appendChild(div);
+}
+function edDel(b){const row=b.parentElement,box=row.parentElement;if(box.children.length>1){row.remove();edCalc()}}
+const edRead=side=>[...G(side==='d'?'edD':'edC').children].map(r=>({a:r.querySelector('select').value,m:parseFloat(r.querySelector('.em').value)||0})).filter(x=>x.a&&x.m>0);
+function edCalc(){
+  G('edErr').classList.add('hidden');
+  const d=sum(edRead('d')),c=sum(edRead('c')),st=G('edStat');
+  if(!d&&!c){st.className='text-center font-bold rounded-lg p-2 bg-slate-100';st.textContent=T2('أدخل الحسابات والمبالغ','Enter accounts and amounts');return}
+  const ok=eq(d,c);
+  st.className='text-center font-bold rounded-lg p-2 '+(ok?'bg-slate-100 text-emerald-700':'bg-rose-50 text-rose-700 border border-rose-300');
+  st.textContent=T2(`مجموع المدين ${fmt(d)} | مجموع الدائن ${fmt(c)} — ${ok?'القيد متوازن ✅':'القيد غير متوازن ⚠️ لن يُقبل حفظ التعديل'}`,`Total debit ${fmt(d)} | Total credit ${fmt(c)} — ${ok?'Entry balanced ✅':'Entry NOT balanced ⚠️ the edit will not be saved'}`);
+}
+function editEntry(id){
+  const e=entries.find(x=>x.id===id);if(!e)return;
+  ensureModals();edId=id;
+  G('edDate').value=e.date;G('edDesc').value=e.desc;
+  G('edD').innerHTML='';G('edC').innerHTML='';
+  e.debits.forEach(x=>edRow('d',x));e.credits.forEach(x=>edRow('c',x));
+  edCalc();G('edOv').classList.remove('hidden');
+}
+function edClose(){G('edOv').classList.add('hidden');edId=null}
+function edSave(){
+  const e=entries.find(x=>x.id===edId);if(!e){edClose();return}
+  const date=G('edDate').value,desc=G('edDesc').value.trim(),debits=edRead('d'),credits=edRead('c');
+  const er=G('edErr'),bad=m=>{er.textContent=m;er.classList.remove('hidden');if(er.animate)er.animate([{transform:'scale(1.03)'},{transform:'scale(1)'}],{duration:300})};
+  if(!date)return bad(T2('اكتب تاريخ القيد.','Enter the entry date.'));
+  if(!desc)return bad(T2('اكتب بيان القيد.','Enter the entry description.'));
+  if(!debits.length||!credits.length)return bad(T2('يجب أن يحتوي القيد على حساب مدين وحساب دائن على الأقل بمبلغ أكبر من صفر.','The entry needs at least one debit and one credit account with an amount above zero.'));
+  const d=sum(debits),c=sum(credits);
+  if(!eq(d,c))return bad(T2(`تم رفض التعديل: القيد غير متوازن (المدين ${fmt(d)} والدائن ${fmt(c)}). اجعل الطرفين متساويين ثم احفظ.`,`Edit rejected: the entry is not balanced (debit ${fmt(d)}, credit ${fmt(c)}). Make both sides equal, then save.`));
+  if(debits.some(x=>credits.some(y=>y.a===x.a)))return bad(T2('لا يجوز أن يظهر الحساب نفسه في الطرفين المدين والدائن.','The same account cannot appear on both the debit and the credit side.'));
+  e.date=date;e.desc=desc;e.debits=debits;e.credits=credits;
+  store.set('acc_entries',entries);edClose();renderAll();
+}
+// ----- اختيار طريقة حل الشيت قبل التصدير -----
+function solOpen(){
+  ensureModals();
+  G('solMsg').textContent=entries.length
+    ?T2(`يوجد ${entries.length} قيد في دفتر اليومية. اختر طريقة تصحيح الشيت:`,`There are ${entries.length} entries in the journal. Choose how this sheet is graded:`)
+    :T2('دفتر اليومية فارغ حالياً. اختر طريقة تصحيح الشيت:','The journal is empty. Choose how this sheet is graded:');
+  G('solOv').classList.remove('hidden');
+}
+function solClose(){G('solOv').classList.add('hidden')}
+function solChoose(mode){
+  solClose();
+  if(mode==='auto'){
+    if(!(parseInt(G('shE').value)>0)){alert(T2('للحل التلقائي اكتب أولاً رقماً أكبر من صفر في خانة «عدد القيود بالحل».','For automatic grading, first enter a number above zero in the “Entries in the solution” field.'));G('shE').focus();return}
+    doExportSheet(true);
+  }else{
+    if(!entries.length){tab('journal');alert(T2('سجّل قيود الحل الصحيح في دفتر اليومية، ثم ارجع إلى تبويب الشيتات واضغط تصدير.','Record the correct solution entries in the journal, then come back to the Assignments tab and press export.'));return}
+    doExportSheet(false);
+  }
+}
+// ----- معاينة مصغرة لدفتر اليومية داخل صفحة الشيتات -----
+function renderMiniJournal(){
+  const box=G('shJ');if(!box)return;
+  const line=e=>e.debits.map(x=>`${T2('من حـ/','Dr')} ${esc(x.a)} ${fmt(x.m)}`).join(' + ')+' ← '+e.credits.map(x=>`${T2('إلى حـ/','Cr')} ${esc(x.a)} ${fmt(x.m)}`).join(' + ');
+  const rows=entries.map((e,i)=>`<tr class="border-t align-top"><td class="p-2 text-slate-400">${i+1}</td><td class="p-2 whitespace-nowrap">${esc(e.date)}</td><td class="p-2 text-sm">${line(e)}<div class="text-xs text-slate-500">( ${esc(e.desc)} )</div></td><td class="p-2 no-print whitespace-nowrap"><button onclick="editEntry(${e.id})" class="text-indigo-600 mx-1" title="${T2('تعديل القيد','Edit entry')}">✏️</button><button onclick="delEntry(${e.id})" class="text-red-500" title="${T2('حذف القيد','Delete entry')}">🗑</button></td></tr>`).join('');
+  box.innerHTML=`<div class="bg-white rounded-xl p-5 shadow-sm border"><div class="flex flex-wrap items-center justify-between gap-2 mb-2"><h2 class="text-lg font-bold">📒 ${T2('معاينة دفتر اليومية','Journal preview')}</h2><div class="text-xs text-slate-500">${entries.length} ${T2('قيد','entries')} <button onclick="tab('journal')" class="text-indigo-700 underline mx-2">${T2('فتح الدفتر كاملاً','Open the full journal')}</button></div></div>`
+    +(entries.length?`<div class="overflow-x-auto max-h-80 overflow-y-auto"><table class="w-full text-right"><tbody>${rows}</tbody></table></div>`
+      :`<p class="text-sm text-slate-400 p-3">${T2('لا توجد قيود بعد. سجّل القيود في دفتر اليومية وستظهر هنا مباشرة.','No entries yet. Record entries in the journal and they will appear here.')}</p>`)+`</div>`;
+}
+const bUrl=f=>f?URL.createObjectURL(f):'#';
+// ----- قفل وضع المعلم 24 ساعة بعد 3 إجابات خاطئة لسؤال الطوارئ -----
+const TEM_MAX=3,TEM_LOCK=24*3600*1000;
+let tEmMem={n:0,start:0,until:0};
+function tEmState(){
+  let o={n:0,start:0,until:0};
+  try{o=Object.assign(o,JSON.parse(localStorage.getItem('edu_tem')||'{}'))}catch(x){}
+  return {n:Math.max(+o.n||0,tEmMem.n),start:Math.max(+o.start||0,tEmMem.start),until:Math.max(+o.until||0,tEmMem.until)};
+}
+function tEmSave(o){tEmMem={...o};try{localStorage.setItem('edu_tem',JSON.stringify(o))}catch(x){}}
+function tEmBlock(){
+  const o=tEmState();if(!o.until)return '';
+  const now=Date.now();
+  if(now<o.start)return T2('تم اكتشاف تغيير في ساعة الجهاز، وضع المعلم مقفول حالياً.','A device clock change was detected; teacher mode is locked for now.');
+  if(now<o.until){const m=Math.ceil((o.until-now)/60000);return T2(`وضع المعلم مقفول. المتبقي: ${Math.floor(m/60)} ساعة و${m%60} دقيقة.`,`Teacher mode is locked. Remaining: ${Math.floor(m/60)} h ${m%60} min.`)}
+  tEmSave({n:0,start:0,until:0});return '';
+}
+// ----- أمان تغيير رمز المعلم: 3 محاولات ثم حظر 10 ساعات -----
+const TCHG_MAX=3,TCHG_LOCK=10*3600*1000;
+let tChgOK=false,tChgMem={n:0,start:0,until:0};
+function tChgState(){
+  let o={n:0,start:0,until:0};
+  try{o=Object.assign(o,JSON.parse(localStorage.getItem('edu_tchg')||'{}'))}catch(x){}
+  return {n:Math.max(+o.n||0,tChgMem.n),start:Math.max(+o.start||0,tChgMem.start),until:Math.max(+o.until||0,tChgMem.until)};
+}
+function tChgSave(o){tChgMem={...o};try{localStorage.setItem('edu_tchg',JSON.stringify(o))}catch(x){}}
+function tChgBlock(){
+  const o=tChgState();if(!o.until)return '';
+  const now=Date.now();
+  if(now<o.start)return T2('تم اكتشاف تغيير في ساعة الجهاز، لذلك تغيير الرمز محظور حالياً.','A device clock change was detected, so changing the code is blocked for now.');
+  if(now<o.until){const m=Math.ceil((o.until-now)/60000);return T2(`أنت محظور من محاولة تغيير الرمز. المتبقي: ${Math.floor(m/60)} ساعة و${m%60} دقيقة.`,`You are blocked from changing the code. Remaining: ${Math.floor(m/60)} h ${m%60} min.`)}
+  tChgSave({n:0,start:0,until:0});return '';
+}
+
+// ===== السحابة (Supabase) =====
+// املأ القيمتين التاليتين بعد إنشاء مشروع Supabase (Project URL و anon/publishable key). إن تُركتا فارغتين تعمل المنصة محلياً كما كانت.
+// ملاحظة: الجداول المخصصة تُحفظ داخل عمود JSONB (workspaces.data) مع باقي بيانات المستخدم.
+const SB_URL='',SB_KEY='';
+var sb=null,syncTimer=null,cloudSheetsList=[],cloudSubs={},cloudCh=null,cloudHasSession=false,cloudMsgTxt='',tcRes=null;
+const SYNC_KEYS=['acc_list','acc_types','acc_codes','acc_entries','acc_prog','acc_quiz','acc_sheet','acc_tables'];
+function cloudOn(){return !!sb}
+function cloudInit(){
+  try{if(SB_URL&&SB_KEY&&window.supabase)sb=window.supabase.createClient(SB_URL,SB_KEY,{auth:{persistSession:true,autoRefreshToken:true}})}catch(x){sb=null}
+}
+cloudInit();
+function cloudErrMsg(e){
+  const m=(e&&e.message)||String(e);
+  if(e&&e.code==='23505')return T2('هذا الكود مسجل بالفعل (لطالب آخر أو على جهاز آخر). إن كان كودك فتواصل مع المعلم لفك التسجيل.','This code is already registered (to another student or on another device). If it is yours, ask your teacher to release it.');
+  if(/anonymous/i.test(m)&&/(disabled|not enabled)/i.test(m))return T2('تسجيل الدخول المجهول غير مفعّل في Supabase (Authentication ← Sign In / Providers).','Anonymous sign-ins are not enabled in Supabase (Authentication > Sign In / Providers).');
+  if(/Invalid login credentials/i.test(m))return T2('البريد أو كلمة المرور غير صحيحة.','Incorrect email or password.');
+  if(/Failed to fetch|NetworkError|network/i.test(m))return T2('تعذر الاتصال بالسحابة. تحقق من الإنترنت.','Could not reach the cloud. Check your internet connection.');
+  return m;
+}
+async function cloudSession(){const r=await sb.auth.getSession();return r&&r.data&&r.data.session?r.data.session.user:null}
+async function cloudMyProfile(u){const r=await sb.from('profiles').select('id,role').eq('id',u.id).maybeSingle();return r.data||null}
+// ----- الطالب: تسجيل البيانات في السحابة (الخادم يتحقق من نطاق الكود) -----
+async function cloudStudentSave(p){
+  try{
+    let u=await cloudSession();
+    if(u){const me=await cloudMyProfile(u);if(me&&me.role==='teacher'){await sb.auth.signOut();u=null}}
+    if(!u){const r=await sb.auth.signInAnonymously();if(r.error)throw r.error;u=r.data.user}
+    const me=await cloudMyProfile(u);
+    const row={name:p.name,code:String(p.code),year:+p.year};
+    const q=me?await sb.from('profiles').update(row).eq('id',u.id):await sb.from('profiles').insert({id:u.id,role:'student',...row});
+    if(q.error)throw q.error;
+    cloudHasSession=true;return {ok:true};
+  }catch(e){return {ok:false,msg:cloudErrMsg(e)}}
+}
+async function cloudAfterLogin(){
+  if(!sb)return;
+  const p=getProfile();
+  if(p&&p.role==='student'){
+    const u=await cloudSession().catch(()=>null);cloudHasSession=!!u;
+    if(u){await cloudPull();await cloudLoadSheets();cloudSubscribe()}
+  }
+  renderCloudUI();
+}
+async function cloudLink(){
+  const p=getProfile();if(!p||p.role!=='student')return;
+  const r=await cloudStudentSave(p);
+  if(!r.ok){cloudMsgTxt=r.msg;renderCloudUI();return}
+  cloudMsgTxt='';cloudAfterLogin();
+}
+// ----- مزامنة مساحة عمل الطالب (القيود ودليل الحسابات والتقدم والجداول المخصصة) -----
+function cloudMarkDirty(k){
+  if(!sb||SYNC_KEYS.indexOf(k)<0)return;
+  try{localStorage.setItem('acc_dirty','1')}catch(x){}
+  clearTimeout(syncTimer);syncTimer=setTimeout(cloudPush,1500);
+}
+async function cloudPush(){
+  const p=getProfile();if(!sb||!p||p.role!=='student')return;
+  try{
+    const u=await cloudSession();if(!u)return;
+    const data={};
+    SYNC_KEYS.forEach(k=>{try{const v=localStorage.getItem(k);if(v!==null){const o=JSON.parse(v);if(k==='acc_sheet'&&o&&o.attachment)o.attachment.url='';data[k]=o}}catch(x){}});
+    const r=await sb.from('workspaces').upsert({user_id:u.id,data}).select('updated_at').single();
+    if(r.error)throw r.error;
+    localStorage.setItem('acc_cloud_ts',r.data.updated_at);localStorage.removeItem('acc_dirty');
+  }catch(e){}
+}
+async function cloudPull(){
+  try{
+    const u=await cloudSession();if(!u)return;
+    const r=await sb.from('workspaces').select('data,updated_at').eq('user_id',u.id).maybeSingle();
+    if(r.error)return;
+    const dirty=localStorage.getItem('acc_dirty')==='1';
+    if(dirty||!r.data){cloudPush();return}
+    if(r.data.updated_at!==localStorage.getItem('acc_cloud_ts')){
+      Object.entries(r.data.data||{}).forEach(([k,v])=>{if(SYNC_KEYS.indexOf(k)>=0)localStorage.setItem(k,JSON.stringify(v))});
+      localStorage.setItem('acc_cloud_ts',r.data.updated_at);
+      if(localStorage.getItem('acc_cloud_ts')===r.data.updated_at)location.reload();
+    }
+  }catch(e){}
+}
+// ----- الشيتات المنشورة (للطالب) -----
+async function cloudLoadSheets(){
+  if(!sb)return;
+  try{
+    const a=await sb.from('sheets').select('*').eq('published',true).order('created_at',{ascending:false});
+    if(a.error)throw a.error;cloudSheetsList=a.data||[];
+    const u=await cloudSession();
+    if(u){const b=await sb.from('submissions').select('sheet_id,grade,submitted_at').eq('student_id',u.id);cloudSubs={};(b.data||[]).forEach(x=>{cloudSubs[x.sheet_id]=x})}
+    cloudMsgTxt='';
+  }catch(e){cloudMsgTxt=cloudErrMsg(e)}
+  renderCloudUI();
+}
+function cloudSubscribe(){
+  if(cloudCh||!sb)return;
+  try{cloudCh=sb.channel('sheets-live').on('postgres_changes',{event:'*',schema:'public',table:'sheets'},()=>cloudLoadSheets()).subscribe()}catch(x){}
+}
+function cloudStart(id){
+  const r=cloudSheetsList.find(x=>x.id===id);if(!r)return;
+  const d={type:'acc-sheet',sheetId:r.id,title:r.title,instructions:r.instructions,maxScore:r.max_score,expected:r.expected,model:r.model,accounts:r.accounts,types:r.types,codes:r.codes};
+  try{loadSheetData(d,null)}catch(x){alert(T2('تعذر فتح الشيت.','Could not open the sheet.'))}
+}
+async function cloudSubmit(S,gr){
+  try{
+    const u=sb&&await cloudSession();
+    if(!u)return alert(T2('لا توجد جلسة سحابية. سجّل بياناتك أولاً أو اضغط «ربط الحساب بالسحابة».','No cloud session. Register first or press “Link account to the cloud”.'));
+    if(!cloudSheetsList.some(x=>x.id===S.sheetId))return alert(T2('هذا الشيت غير منشور سحابياً، اختر شيتاً من قائمة الشيتات المنشورة.','This sheet is not published in the cloud; choose one from the published list.'));
+    const r=await sb.from('submissions').upsert({sheet_id:S.sheetId,student_id:u.id,entries:cleanEnts(entries),grade:gr},{onConflict:'sheet_id,student_id'});
+    if(r.error)throw r.error;
+    cloudSubs[S.sheetId]={sheet_id:S.sheetId,grade:gr};
+    G('stRes').innerHTML=resultHTML(gr);renderCloudUI();
+    alert(T2('تم إرسال إجابتك للمعلم. يمكنك إعادة الإرسال لتحديثها.','Your answer was sent to the teacher. You can send again to update it.'));
+  }catch(e){alert(cloudErrMsg(e))}
+}
+// ----- المعلم: دخول السحابة ونشر الشيتات ومراجعة التسليمات -----
+function tcPrompt(){return new Promise(res=>{ensureModals();tcRes=res;G('tcErr').classList.add('hidden');G('tcPass').value='';G('tcOv').classList.remove('hidden');setTimeout(()=>G('tcMail').focus(),30)})}
+function tcErr(m){const e=G('tcErr');e.textContent=m;e.classList.remove('hidden')}
+function tcClose(ok){G('tcOv').classList.add('hidden');if(tcRes){const r=tcRes;tcRes=null;r(!!ok)}}
+async function tcSubmit(){
+  const em=G('tcMail').value.trim(),pw=G('tcPass').value;
+  if(!em||!pw)return tcErr(T2('اكتب البريد وكلمة المرور.','Enter the email and password.'));
+  try{
+    const r=await sb.auth.signInWithPassword({email:em,password:pw});
+    if(r.error)throw r.error;
+    const me=await cloudMyProfile(r.data.user);
+    if(!me||me.role!=='teacher'){await sb.auth.signOut();return tcErr(T2('هذا الحساب ليس حساب معلم.','This is not a teacher account.'))}
+    G('tcPass').value='';tcClose(true);
+  }catch(e){tcErr(cloudErrMsg(e))}
+}
+async function cloudTeacherReady(){
+  if(!sb)return false;
+  try{const u=await cloudSession();if(u){const me=await cloudMyProfile(u);if(me&&me.role==='teacher')return true}}catch(x){}
+  return tcPrompt();
+}
+async function cloudPublishSheet(sheet){
+  if(!isTeacher())return;
+  if(!(await cloudTeacherReady()))return;
+  const r=await sb.from('sheets').insert({id:sheet.sheetId,title:sheet.title,instructions:sheet.instructions,max_score:sheet.maxScore,expected:sheet.expected,model:sheet.model,accounts:sheet.accounts,types:sheet.types,codes:sheet.codes,published:true});
+  if(r.error)return alert(cloudErrMsg(r.error));
+  alert(T2('تم نشر الشيت. سيظهر تلقائياً لجميع الطلاب.','The sheet is published. It will appear automatically for all students.'));
+  cloudRefreshPub();
+}
+async function cloudRefreshPub(){
+  if(!(await cloudTeacherReady()))return;
+  const a=await sb.from('sheets').select('id,title,created_at').order('created_at',{ascending:false});
+  const b=await sb.from('submissions').select('sheet_id');
+  if(a.error)return alert(cloudErrMsg(a.error));
+  const cnt={};(b.data||[]).forEach(x=>{cnt[x.sheet_id]=(cnt[x.sheet_id]||0)+1});
+  const box=G('cloudPub');if(!box)return;
+  const list=a.data||[];
+  const f=G('cloudFilter');if(f){f.innerHTML=`<option value="">${T2('كل الشيتات','All sheets')}</option>`+list.map(x=>`<option value="${esc(x.id)}">${esc(x.title)}</option>`).join('')}
+  box.innerHTML=list.length?`<table class="w-full text-right text-sm mt-2"><thead><tr class="bg-slate-100 text-slate-600"><th class="p-2">${T2('الشيت المنشور','Published sheet')}</th><th class="p-2">${T2('التسليمات','Submissions')}</th><th class="p-2"></th></tr></thead><tbody>`
+    +list.map(x=>`<tr class="border-t"><td class="p-2">${esc(x.title)}</td><td class="p-2">${cnt[x.id]||0}</td><td class="p-2"><button onclick="cloudDelSheet('${esc(x.id)}')" class="text-red-600 text-xs">🗑 ${T2('حذف','Delete')}</button></td></tr>`).join('')+`</tbody></table>`
+    :`<p class="text-sm text-slate-400 mt-2">${T2('لا توجد شيتات منشورة.','No published sheets.')}</p>`;
+}
+async function cloudDelSheet(id){
+  if(!confirm(T2('حذف الشيت وكل تسليماته نهائياً؟','Delete the sheet and all its submissions permanently?')))return;
+  const r=await sb.from('sheets').delete().eq('id',id);
+  if(r.error)return alert(cloudErrMsg(r.error));
+  cloudRefreshPub();
+}
+async function cloudLoadSubs(){
+  if(!isTeacher())return alert(T2('هذه الأداة لوضع المعلم فقط.','This tool is for teacher mode only.'));
+  if(!(await cloudTeacherReady()))return;
+  const fv=G('cloudFilter')?G('cloudFilter').value:'';
+  let qs=sb.from('submissions').select('*').order('submitted_at',{ascending:false});if(fv)qs=qs.eq('sheet_id',fv);
+  const [sh,sub,pr]=await Promise.all([sb.from('sheets').select('*'),qs,sb.from('profiles').select('*').eq('role','student')]);
+  const er=sh.error||sub.error||pr.error;if(er)return alert(cloudErrMsg(er));
+  const shM={},prM={};(sh.data||[]).forEach(x=>{shM[x.id]=x});(pr.data||[]).forEach(x=>{prM[x.id]=x});
+  const rs=(sub.data||[]).filter(s=>shM[s.sheet_id]).map(s=>{
+    const h=shM[s.sheet_id],p=prM[s.student_id]||{};
+    return {f:(p.name||'—')+' / '+h.title,d:{type:'acc-answer',cloud:true,studentName:p.name||'—',studentCode:p.code||'',studentYear:String(p.year||''),profileIntegrity:'ok',entries:s.entries,
+      sheet:{sheetId:h.id,title:h.title,maxScore:h.max_score,expected:h.expected,model:h.model,accounts:h.accounts},gradeReport:s.grade||{}}};
+  });
+  reviewRender(rs,null);
+  if(!rs.length)G('rvOut').innerHTML=`<p class="text-sm text-slate-400">${T2('لا توجد تسليمات بعد.','No submissions yet.')}</p>`;
+}
+async function cloudStudents(){
+  if(!(await cloudTeacherReady()))return;
+  const r=await sb.from('profiles').select('id,name,code,year').eq('role','student').order('year').order('code');
+  if(r.error)return alert(cloudErrMsg(r.error));
+  const box=G('cloudPub');
+  box.innerHTML=`<table class="w-full text-right text-sm mt-2"><thead><tr class="bg-slate-100 text-slate-600"><th class="p-2">${T2('الطالب','Student')}</th><th class="p-2">${T2('الكود','Code')}</th><th class="p-2">${T2('الفرقة','Year')}</th><th class="p-2"></th></tr></thead><tbody>`
+    +(r.data||[]).map(x=>`<tr class="border-t"><td class="p-2">${esc(x.name)}</td><td class="p-2 font-mono">${esc(x.code)}</td><td class="p-2">${YR[x.year]?esc(yearName(String(x.year))):'—'}</td><td class="p-2"><button onclick="cloudRelease('${esc(x.id)}')" class="text-red-600 text-xs">${T2('فك التسجيل','Release')}</button></td></tr>`).join('')+`</tbody></table>`;
+}
+async function cloudRelease(id){
+  if(!confirm(T2('فك تسجيل هذا الطالب؟ سيتمكن من التسجيل بكوده من جديد، وتُحذف تسليماته.','Release this student? They can register again with their code, and their submissions are deleted.')))return;
+  const r=await sb.from('profiles').delete().eq('id',id);
+  if(r.error)return alert(cloudErrMsg(r.error));
+  cloudStudents();
+}
+// ----- واجهة السحابة -----
+function renderCloudUI(){
+  const ba=G('btnExpAns'),bs=G('btnExpSheet');
+  if(sb){
+    if(ba)ba.textContent=T2('📤 إرسال إجابتي للمعلم (سحابياً)','📤 Send my answer to the teacher (cloud)');
+    if(bs)bs.textContent=T2('🚀 نشر الشيت للطلاب (سحابياً)','🚀 Publish sheet to students (cloud)');
+  }
+  renderCloudSheets();renderCloudBar();
+}
+function renderCloudSheets(){
+  const box=G('cloudSheets');if(!box)return;
+  const p=getProfile();
+  if(!sb||!p||p.role!=='student'){box.innerHTML='';return}
+  let h=`<div class="rounded-xl border border-indigo-200 bg-indigo-50/40 p-3 space-y-2"><div class="font-bold text-indigo-800">☁ ${T2('الشيتات المنشورة من المعلم','Sheets published by the teacher')}</div>`;
+  if(cloudMsgTxt)h+=`<div class="text-sm text-rose-700">${esc(cloudMsgTxt)}</div>`;
+  if(!cloudHasSession)h+=`<button onclick="cloudLink()" class="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-bold">🔗 ${T2('ربط الحساب بالسحابة','Link account to the cloud')}</button>`;
+  else if(!cloudSheetsList.length)h+=`<div class="text-sm text-slate-500">${T2('لا توجد شيتات منشورة حالياً.','No published sheets right now.')}</div>`;
+  else h+=cloudSheetsList.map(x=>{const sb2=cloudSubs[x.id],act=activeSheet&&activeSheet.sheetId===x.id;
+    return `<div class="flex flex-wrap items-center gap-2 bg-white rounded border p-2"><div class="flex-1 min-w-0"><div class="font-bold">${esc(x.title)}${act?` <span class="text-xs text-emerald-700">(${T2('الشيت النشط','active')})</span>`:''}</div><div class="text-xs text-slate-500">${T2('الدرجة النهائية','Max score')}: ${esc(String(x.max_score))}${sb2?` — <span class="text-emerald-700">${T2('تم الإرسال','Sent')}${sb2.grade&&sb2.grade.totalScore!=null?': '+esc(String(sb2.grade.totalScore)):''}</span>`:''}</div></div><button onclick="cloudStart('${esc(x.id)}')" class="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-bold">${act?T2('إعادة فتح','Reopen'):T2('بدء الحل','Start')}</button></div>`}).join('');
+  box.innerHTML=h+'</div>';
+}
+function renderCloudBar(){
+  const box=G('cloudBar');if(!box)return;
+  if(!sb||!isTeacher()){box.innerHTML='';return}
+  if(G('cloudFilter'))return;
+  box.innerHTML=`<div class="rounded-xl border border-indigo-200 bg-indigo-50/40 p-3 space-y-2"><div class="font-bold text-indigo-800">☁ ${T2('لوحة التحكم السحابية','Cloud dashboard')}</div><div class="flex flex-wrap gap-2 items-center"><select id="cloudFilter" class="p-2 rounded border bg-white text-sm"><option value="">${T2('كل الشيتات','All sheets')}</option></select><button onclick="cloudLoadSubs()" class="bg-indigo-600 text-white px-3 py-1.5 rounded text-sm font-bold">${T2('📥 تحميل التسليمات','📥 Load submissions')}</button><button onclick="cloudRefreshPub()" class="bg-slate-200 px-3 py-1.5 rounded text-sm">${T2('📋 الشيتات المنشورة','📋 Published sheets')}</button><button onclick="cloudStudents()" class="bg-slate-200 px-3 py-1.5 rounded text-sm">${T2('👥 الطلاب المسجلون','👥 Registered students')}</button></div><div id="cloudPub"></div></div>`;
+}
+if(sb)setTimeout(()=>{cloudAfterLogin()},300);
+
+// ===== تصدير Excel (.xlsx) =====
+function exportXlsx(){
+  const T=v=>LANG==='en'&&typeof v==='string'?tr(v):v,fx=rows=>rows.map(r=>r.map(T));
+  const jr=[['#','التاريخ','البيان','الحساب','مدين','دائن']];
+  entries.forEach((e,i)=>{
+    e.debits.forEach(x=>jr.push([i+1,e.date,e.desc,x.a,x.m,'']));
+    e.credits.forEach(x=>jr.push([i+1,e.date,e.desc,x.a,'',x.m]));
+  });
+  if(!window.XLSX){
+    const csv='\ufeff'+fx(jr).map(r=>r.map(c=>'"'+String(c).replace(/"/g,'""')+'"').join(',')).join('\n');
+    const l=document.createElement('a');l.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));l.download='journal.csv';l.click();
+    return alert('تعذر تحميل مكتبة Excel (تحتاج اتصالاً بالإنترنت). تم تصدير اليومية بصيغة CSV.');
+  }
+  const used=usedAccounts(),tb=[['الحساب','رصيد مدين','رصيد دائن']];let sd=0,sc2=0;
+  used.forEach(a=>{const b=totals(a).bal;tb.push([a,b>0?b:'',b<0?-b:'']);if(b>0)sd+=b;else sc2-=b});
+  tb.push(['الإجمالي',sd,sc2]);
+  const by={A:[],L:[],E:[],R:[],X:[]};
+  used.forEach(a=>{const t=types[a];if(!by[t])return;const b=totals(a).bal;by[t].push([a,(t==='A'||t==='X')?b:-b])});
+  const tot=k=>by[k].reduce((p,x)=>p+x[1],0),sec=(t,k)=>[[t],...by[k],['إجمالي '+t,tot(k)]],ni=tot('R')-tot('X');
+  const is=[['قائمة الدخل'],...sec('الإيرادات','R'),...sec('المصروفات','X'),[ni>=0?'صافي الربح':'صافي الخسارة',Math.abs(ni)]];
+  const bs=[['المركز المالي'],...sec('الأصول','A'),...sec('الخصوم','L'),['حقوق الملكية'],...by.E,[ni>=0?'صافي ربح الفترة':'صافي خسارة الفترة',ni],['إجمالي حقوق الملكية',tot('E')+ni],['الخصوم + حقوق الملكية',tot('L')+tot('E')+ni]];
+  const wb=XLSX.utils.book_new();
+  [['اليومية',jr],['ميزان المراجعة',tb],['قائمة الدخل',is],['المركز المالي',bs]].forEach(([n,r])=>XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet(fx(r)),String(T(n)).slice(0,31)));
+  customTables.forEach((t,i)=>{
+    let name=String(t.title||('جدول '+(i+1))).replace(/[\\\/\?\*\[\]:]/g,' ').slice(0,31)||('Table'+(i+1));
+    XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([t.columns,...t.rows]),name);
+  });
+  wb.Workbook={Views:[{RTL:LANG!=='en'}]};
+  XLSX.writeFile(wb,'accounting.xlsx');
+}
+
+
+// ===== أدوات التصدير المشتركة: تنزيل PDF / Excel مباشرة كملف =====
+function xpLoad(src){
+  return new Promise((ok,no)=>{
+    const old=document.querySelector('script[data-xp="'+src+'"]');
+    if(old&&old.dataset.ok)return ok();
+    const s=document.createElement('script');
+    s.src=src;s.dataset.xp=src;
+    s.onload=()=>{s.dataset.ok='1';ok()};
+    s.onerror=()=>{s.remove();no(new Error('load failed: '+src))};
+    document.head.appendChild(s);
+  });
+}
+function xpBusy(msg){
+  let o=document.getElementById('xpBusy');
+  if(!o){
+    o=document.createElement('div');o.id='xpBusy';o.className='no-print';
+    o.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(15,23,42,.8);color:#fff;display:flex;align-items:center;justify-content:center;font:700 16px Cairo,Arial,sans-serif;text-align:center;padding:24px';
+    document.body.appendChild(o);
+  }
+  o.textContent=msg;o.style.display='flex';
+  return {set:m=>{o.textContent=m},close:()=>{o.style.display='none'}};
+}
+function xpDownload(blob,name){
+  const u=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=u;a.download=name;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(u),5000);
+}
+const xpStamp=()=>new Date().toISOString().slice(0,10);
+// مواضع العناصر التي لا يجوز قصّها بين صفحتين (صفوف، بطاقات، عناوين...)
+function xpAtoms(root,scale){
+  const base=root.getBoundingClientRect().top;
+  return [...root.querySelectorAll('tr,h1,h2,h3,p,li,svg,[data-atom],[class*="rounded-xl"],[class*="rounded-lg"]')]
+    .map(e=>{const r=e.getBoundingClientRect();return [(r.top-base)*scale,(r.bottom-base)*scale]})
+    .filter(a=>a[1]-a[0]>1);
+}
+// blocks: [{node, width, landscape, dir}] — كل block يبدأ في صفحة جديدة
+async function xpBuild(blocks,fileName,onProgress){
+  await xpLoad('https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js');
+  await xpLoad('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js');
+  const jsPDF=window.jspdf.jsPDF;
+  const sx=window.scrollX,sy=window.scrollY;
+  window.scrollTo(0,0);
+  const host=document.createElement('div');
+  host.style.cssText='position:absolute;left:0;top:0;z-index:-1';
+  document.body.appendChild(host);
+  let pdf=null;
+  const newPage=land=>{
+    if(!pdf)pdf=new jsPDF({orientation:land?'l':'p',unit:'mm',format:'a4',compress:true});
+    else pdf.addPage('a4',land?'l':'p');
+  };
+  try{
+    for(let bi=0;bi<blocks.length;bi++){
+      const b=blocks[bi],W=b.width||1000,land=!!b.landscape;
+      if(onProgress)onProgress(bi+1,blocks.length);
+      const wrap=document.createElement('div');
+      wrap.className='xp-wrap';
+      wrap.style.cssText='width:'+W+'px;box-sizing:border-box;padding:20px;background:#fff;color:#0f172a;font-family:Cairo,Arial,sans-serif;direction:'+(b.dir||'rtl');
+      const st=document.createElement('style');
+      st.textContent='.xp-wrap *{letter-spacing:0!important;box-shadow:none!important}';
+      wrap.appendChild(st);wrap.appendChild(b.node);
+      host.innerHTML='';host.appendChild(wrap);
+      await new Promise(r=>setTimeout(r,90));
+      if(document.fonts&&document.fonts.ready)await document.fonts.ready;
+      const H=Math.max(1,wrap.offsetHeight);
+      const scale=Math.max(.8,Math.min(2,Math.sqrt(12e6/(W*H)),16000/H));
+      let atoms=[];
+      const canvas=await html2canvas(wrap,{
+        scale,backgroundColor:'#ffffff',useCORS:true,logging:false,windowWidth:Math.max(1100,W+40),
+        onclone:(doc,el)=>{try{atoms=xpAtoms(el,scale)}catch(x){}}
+      });
+      if(!atoms.length){try{atoms=xpAtoms(wrap,scale)}catch(x){}}
+      const pageW=land?297:210,pageH=land?210:297,M=8,FOOT=8;
+      const cw=pageW-2*M,pxmm=canvas.width/cw,pageHpx=(pageH-2*M-FOOT)*pxmm;
+      const A=atoms.filter(a=>a[1]-a[0]<pageHpx*0.7);
+      let y=0;
+      while(y<canvas.height-1){
+        let end=Math.min(y+pageHpx,canvas.height);
+        if(end<canvas.height){
+          let cut=end;
+          for(let g=0;g<300;g++){
+            const hit=A.find(a=>a[0]<cut-1&&a[1]>cut+1);
+            if(!hit)break;
+            cut=hit[0];
+          }
+          if(cut>y+pageHpx*0.25)end=cut;
+        }
+        const yi=Math.round(y),sh=Math.max(1,Math.round(end)-yi);
+        const part=document.createElement('canvas');
+        part.width=canvas.width;part.height=sh;
+        const ctx=part.getContext('2d');
+        ctx.fillStyle='#fff';ctx.fillRect(0,0,part.width,sh);
+        ctx.drawImage(canvas,0,yi,canvas.width,sh,0,0,canvas.width,sh);
+        newPage(land);
+        pdf.addImage(part.toDataURL('image/jpeg',0.92),'JPEG',M,M,cw,sh/pxmm);
+        y=end;
+      }
+    }
+    const n=pdf.getNumberOfPages();
+    for(let i=1;i<=n;i++){
+      pdf.setPage(i);pdf.setFontSize(8);pdf.setTextColor(130);
+      const pw=pdf.internal.pageSize.getWidth(),ph=pdf.internal.pageSize.getHeight();
+      pdf.text('EDU_Acc  |  '+i+' / '+n,pw/2,ph-4,{align:'center'});
+    }
+    pdf.save(fileName);
+  }finally{
+    host.remove();
+    window.scrollTo(sx,sy);
+  }
+}
+
+// ===== حفظ PDF للمنصة (القسم الحالي أو التقرير المحاسبي كاملاً) =====
+const XP_KEYS=['journal','ledger','trial','fin','dash'];
+const XP_ORDER=['journal','ledger','trial','fin'];
+function xpClone(k){
+  const n=document.getElementById('v-'+k).cloneNode(true);
+  n.classList.remove('hidden');
+  // نبقي كل قيد (سطوره وبيانه) معاً في صفحة واحدة
+  const jb=n.querySelector('#jBody');
+  if(jb){
+    let grp=null;
+    [...jb.children].forEach(r=>{
+      if(!grp||r.classList.contains('border-t')){grp=document.createElement('tbody');grp.setAttribute('data-atom','1');jb.parentNode.insertBefore(grp,jb)}
+      grp.appendChild(r);
+    });
+    jb.remove();
+  }
+  n.querySelectorAll('.no-print,button,input,select,textarea,script,iframe').forEach(x=>x.remove());
+  n.querySelectorAll('[id]').forEach(x=>x.removeAttribute('id'));
+  n.removeAttribute('id');
+  n.querySelectorAll('.overflow-x-auto').forEach(x=>x.classList.remove('overflow-x-auto'));
+  n.querySelectorAll('[class*="md:grid-cols-2"]').forEach(x=>{x.style.gridTemplateColumns='repeat(2,minmax(0,1fr))'});
+  return n;
+}
+async function exportPdf(scope){
+  const vis=TABS.find(k=>{const v=document.getElementById('v-'+k);return v&&!v.classList.contains('hidden')});
+  const keys=scope==='all'?XP_ORDER:(XP_KEYS.includes(vis)?[vis]:XP_ORDER);
+  if(!entries.length){
+    alert(T2('لا توجد قيود لتصديرها بعد. سجّل قيداً أولاً.','There are no entries to export yet. Record an entry first.'));
+    return;
+  }
+  const ov=xpBusy(T2('جارٍ تجهيز ملف PDF… قد يستغرق لحظات','Preparing your PDF… this may take a moment'));
+  try{
+    let who='';
+    try{const p=getProfile();if(p&&p.role==='student')who=p.name+' — '+T2('الكود','Code')+': '+p.code+' — '+yearName(p.year)}catch(x){}
+    const dir=LANG==='en'?'ltr':'rtl';
+    const blocks=keys.map(k=>{
+      const box=document.createElement('div');
+      const head=document.createElement('div');
+      head.setAttribute('data-atom','1');
+      head.style.cssText='display:flex;justify-content:space-between;align-items:flex-start;gap:12px;border-bottom:3px solid #4f46e5;padding-bottom:8px;margin-bottom:14px';
+      head.innerHTML='<div><div style="font-size:20px;font-weight:700;color:#1e293b">EDU_Acc — '+esc(T2('منصة التعليم المحاسبي','Accounting Education Platform'))+'</div>'
+        +(who?'<div style="font-size:13px;color:#475569;margin-top:2px">'+esc(who)+'</div>':'')
+        +'</div><div style="font-size:12px;color:#64748b" dir="ltr">'+xpStamp()+'</div>';
+      box.appendChild(head);box.appendChild(xpClone(k));
+      return {node:box,width:1000,dir};
+    });
+    const tag=(scope==='all'||!XP_KEYS.includes(vis))?'report':vis;
+    await xpBuild(blocks,'EDU_Acc_'+tag+'_'+xpStamp()+'.pdf',(i,n)=>ov.set(T2('جارٍ تجهيز PDF… ','Preparing PDF… ')+i+' / '+n));
+  }catch(err){
+    console.error(err);
+    ov.close();
+    if(confirm(T2('تعذر إنشاء ملف PDF (قد تحتاج اتصالاً بالإنترنت لتحميل المكتبة). هل تريد استخدام نافذة الطباعة والحفظ كـ PDF بدلاً من ذلك؟','Could not create the PDF (an internet connection may be needed). Use the print dialog and save as PDF instead?')))window.print();
+  }finally{ov.close()}
+}
+
+
+// ===== ربط ورقة التدريب بالمنصة (يشتغل حتى لو الملفات مفتوحة من الجهاز مباشرة) =====
+let sheetWin=null;
+function openSheetApp(ev){
+  const w=window.open('spreadsheet.html','_blank');
+  if(w){if(ev)ev.preventDefault();sheetWin=w}
+}
+window.addEventListener('message',ev=>{
+  const d=ev.data;
+  if(!d||d.type!=='edu-need-entries'||!sheetWin||ev.source!==sheetWin)return;
+  try{ev.source.postMessage({type:'edu-entries',entries:JSON.parse(JSON.stringify(entries))},'*')}catch(x){}
+});
+
+// ===== التنقل بين الأقسام =====
+const TABS=['journal','ledger','trial','fin','dash','tables','sheets','ex','tools'];
+function tab(n){
+  if(n==='tools')renderTools();
+  if(n==='tables')renderTables();
+  TABS.forEach(k=>{
+    const v=document.getElementById('v-'+k);
+    if(v)v.classList.toggle('hidden',k!==n);
+    const b=document.getElementById('t-'+k);
+    if(b)b.className='navBtn w-full text-right px-3 py-2.5 rounded-lg font-bold transition '+(k===n?'bg-indigo-600 text-white':'text-slate-700 hover:bg-slate-100');
+  });
+  closeSidebar();
+}
+
+function renderAll(){renderJournal();renderLedger();renderTrial();renderFin();renderDash();renderSheets();renderMiniJournal()}
+document.getElementById('date').valueAsDate=new Date();
+addRow('d');addRow('c');calc();tab('journal');renderAll();renderTables();renderEx();initTools();document.getElementById('codesChk').checked=showCodes;applyLang();renderProfile();if(!getProfile())loginOpen('first');else if(!store.get('acc_tour',0))setTimeout(tourStart,700);
+</script>
+<script src="patches.js"></script>
+<script src="smart-parser.js"></script>
+<script src="pro-mode.js"></script>
+<script src="pro-modules.js"></script>
+</body>
+</html>
