@@ -1,201 +1,223 @@
 /* ========================================================================
-   EDU_Acc — smart-parser.js (نسخة الذكاء الاصطناعي المتقدمة AI-Parser)
+   EDU_Acc — smart-parser.js (النسخة المتقدمة V3 - Compound Entries)
    ======================================================================== */
 (function(){
 'use strict';
 
-/* ===== 1. قواميس المعرفة المحاسبية المتقدمة (Knowledge Base) ===== */
-const KNOWLEDGE = {
-  assets: {
-    words: ['أثاث','مفروشات','سيارة','سيارات','عربية','أرض','أراضي','مبنى','مباني','عقار','عقارات','معدات','تجهيزات','أجهزة','جهاز','آلات','ماكينة','حاسب','كمبيوتر','لابتوب'],
-    rule: 'الأصول بطبيعتها مدينة، تزيد بالمدين وتنقص بالدائن.'
-  },
-  goods: {
-    words: ['بضاعة','بضائع','صنف','أصناف','مخزون'],
-    rule: 'البضاعة عند الشراء تُسجل مشتريات (مدين)، وعند البيع تُسجل مبيعات (دائن).'
-  },
-  expenses: {
-    words: ['أجور','مرتبات','رواتب','إيجار','ايجار','كهرباء','مياه','ماء','تليفون','هاتف','اتصالات','إنترنت','انترنت','صيانة','نقل','مواصلات','إعلان','اعلان','دعاية','تأمين','قرطاسية','أدوات مكتبية','فوائد مدينة','مصروف','مصاريف'],
-    rule: 'المصروفات بطبيعتها مدينة دائماً، وتُمثل عبئاً على المنشأة.'
-  },
-  revenues: {
-    words: ['عمولة','عموله','عمولات','إيراد','ايراد','إيرادات','خدمة','خدمات','فوائد دائنة','استشارات'],
-    rule: 'الإيرادات بطبيعتها دائنة دائماً، وتُمثل مكاسب للمنشأة.'
-  },
-  liabilities: {
-    words: ['مورد','موردين','دائنون','قرض','سلفه','كمبيالة','أوراق دفع'],
-    rule: 'الالتزامات بطبيعتها دائنة، تزيد بالدائن وتنقص (عند السداد) بالمدين.'
-  },
-  customers: {
-    words: ['عميل','عملاء','مدينون'],
-    rule: 'العملاء أصل (مدين)، يزيد عند البيع الآجل، وينقص عند التحصيل منهم.'
-  }
-};
-
-/* ===== 2. محرك المعالجة اللغوية (NLP Engine) ===== */
+/* ===== 1. أدوات مساعدة ===== */
 function normalize(text){
   return text.replace(/[٠-٩]/g, d => String(d.charCodeAt(0) - 0x0660))
              .replace(/[۰-۹]/g, d => String(d.charCodeAt(0) - 0x06F0));
 }
 
-function extractAmount(text){
+// استخراج كل الأرقام من النص
+function extractAmounts(text){
   const t = normalize(text);
-  // استخراج الأرقام حتى لو احتوت على فواصل أو كسور
   const matches = t.match(/\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?/g);
-  if(!matches || !matches.length) return null;
-  const nums = matches.map(x => parseFloat(x.replace(/,/g, ''))).filter(n => !isNaN(n) && n > 0);
-  if(!nums.length) return null;
-  
-  let max = Math.max(...nums); // نأخذ أكبر رقم كونه غالباً قيمة القيد
-  const idx = t.indexOf(String(max));
-  if(idx >= 0){
-    const around = t.substring(Math.max(0, idx - 15), Math.min(t.length, idx + String(max).length + 15));
-    if(/ألف|الف/.test(around)) max *= 1000;
-    else if(/مليون/.test(around)) max *= 1000000;
-  }
-  return max;
+  if(!matches) return [];
+  return matches.map(x => parseFloat(x.replace(/,/g, ''))).filter(n => !isNaN(n) && n > 0);
 }
 
-function detectEntity(text){
-  for (let key in KNOWLEDGE) {
-    for (let word of KNOWLEDGE[key].words) {
-      if (text.includes(word)) {
-        // ترتيب الاسم المحاسبي
-        let accName = word;
-        if(key === 'assets') accName = word;
-        else if(key === 'expenses') accName = text.includes('مصروف') ? word : 'مصروف ' + word;
-        else if(key === 'revenues') accName = text.includes('إيراد') ? word : 'إيراد ' + word;
-        return { type: key, rawWord: word, accountName: accName, rule: KNOWLEDGE[key].rule };
-      }
-    }
-  }
-  return null;
-}
-
-/* ===== 3. المحرك المنطقي للاستنتاج (Inference Logic) ===== */
+/* ===== 2. المحرك المنطقي (Inference Engine) ===== */
 function smartParse(rawText){
   const text = (rawText || '').trim();
   if(!text) return {error:'✍️ يرجى كتابة وصف العملية أولاً للبدء في التحليل.'};
-  const amount = extractAmount(text);
-  if(!amount) return {error:'❓ الذكاء الاصطناعي: لم أتمكن من العثور على مبلغ مالي واضح في الجملة. يرجى كتابة الأرقام بوضوح.'};
+  
+  const amounts = extractAmounts(text);
+  if(!amounts.length) return {error:'❓ لم أتمكن من العثور على أرقام في الجملة. يرجى كتابة المبالغ بوضوح.'};
 
-  // 1. تحديد طريقة الدفع / التحصيل
+  // ترتيب المبالغ تنازلياً (الإجمالي غالباً الأكبر، ثم المدفوع، ثم الخصم)
+  amounts.sort((a, b) => b - a);
+  const maxAmount = amounts[0];
+  const secondAmount = amounts[1] || null;
+  const thirdAmount = amounts[2] || null;
+
+  // تحديد الأطراف الأساسية
   const isBank = /شيك|بالبنك|من البنك|في البنك|ف البنك|تحويل|فيز|أودع|ايداع|بنكي/.test(text);
   const isCash = /نقدا|نقداً|كاش|الخزينة|صندوق|خزنة/.test(text);
-  const isCredit = /على الحساب|بالأجل|على حساب|أجل|آجل|بالاجل|على النوتة/.test(text);
+  const isCredit = /على الحساب|بالأجل|على حساب|أجل|آجل|بالاجل|على النوتة|الباقي/.test(text);
   
-  let moneyAcc = isBank ? 'البنك' : (isCash ? 'النقدية' : (isCredit ? null : 'النقدية')); // افتراضي نقدية إذا لم يذكر
-  let moneyReason = isBank ? 'تم ذكر بنك/شيك/إيداع' : (isCash ? 'تم ذكر كاش/نقداً' : 'لم تُذكر وسيلة دفع فتم افتراض النقدية');
+  let moneyAcc = isBank ? 'البنك' : (isCash ? 'النقدية' : (isCredit ? null : 'النقدية'));
 
-  // 2. تحديد الفعل الأساسي (Action)
+  // تحديد الفعل
   const isBuy = /شراء|اشترى|اشترت|أشترى|بتشتري|مشتريات/.test(text);
   const isSell = /بيع|باع|باعت|بيعت|مبيعات/.test(text);
   const isPay = /دفع|سدد|سداد|سـدد|دفعت|صرف/.test(text);
   const isCollect = /حصل|حصّل|استلم|تحصيل|قبض/.test(text);
   const isCapital = /رأس المال|رأس مال|بدأ|بدء|افتتح|تأسيس|استثمر/.test(text);
-
-  // 3. تحليل الكيان المتأثر (البضاعة، الأصل، المصروف، الإيراد)
-  const entity = detectEntity(text);
   
-  const debit = [], credit = [], aiThoughts = [];
+  // خصومات
+  const isDiscount = /خصم/.test(text);
+  const isDiscountReceived = /حصل.*خصم|خصم.*مكتسب|خصم.*حصل/.test(text);
+  const isDiscountAllowed = /سمح.*خصم|خصم.*مسموح|خصم.*سمح/.test(text);
 
-  // ================= سيناريوهات الذكاء الاصطناعي ================= //
+  // أنواع الحسابات
+  const isSupplier = /مورد|موردين/.test(text);
+  const isCustomer = /عميل|عملاء/.test(text);
+  
+  let expenseWord = 'مصروفات عمومية';
+  if(/أجور|مرتبات|رواتب/.test(text)) expenseWord = 'مصروف الأجور';
+  else if(/إيجار|ايجار/.test(text)) expenseWord = 'مصروف الإيجار';
+  else if(/كهرباء/.test(text)) expenseWord = 'مصروف الكهرباء';
+  else if(/مياه|ماء/.test(text)) expenseWord = 'مصروف المياه';
+  else if(/تليفون|هاتف/.test(text)) expenseWord = 'مصروف الهاتف';
+  else if(/صيانة/.test(text)) expenseWord = 'مصروف الصيانة';
+  else if(/نقل|مواصلات/.test(text)) expenseWord = 'مصروف النقل';
+  else if(/إعلان|اعلان|دعاية/.test(text)) expenseWord = 'مصروف الإعلان';
+  
+  let assetWord = 'الأصول';
+  if(/أثاث|مفروشات/.test(text)) assetWord = 'الأثاث';
+  else if(/سيارة|سيارات/.test(text)) assetWord = 'السيارات';
+  else if(/أرض|أراضي/.test(text)) assetWord = 'الأراضي';
+  else if(/مبنى|مباني|عقار/.test(text)) assetWord = 'المباني';
+  else if(/أجهزة|حاسب|كمبيوتر|لابتوب/.test(text)) assetWord = 'الأجهزة';
+  
+  let revenueWord = 'إيرادات متنوعة';
+  if(/خدمة|خدمات/.test(text)) revenueWord = 'إيراد الخدمات';
 
-  /* سيناريو 1: التأسيس وبدء النشاط */
+  const debit = [], credit = [], notes = [];
+
+  // ================= سيناريوهات القيود المركبة ================= //
+
+  /* 1. سداد للموردين مع خصم مكتسب */
+  if (isPay && isSupplier && isDiscount) {
+    // الإجمالي الأكبر هو الدين، المبلغ الأصغر هو المدفوع، والفرق هو الخصم
+    const totalDebt = maxAmount;
+    const paidCash = secondAmount || totalDebt;
+    const discount = totalDebt - paidCash;
+
+    debit.push({a: 'الموردون', m: totalDebt});
+    credit.push({a: moneyAcc || 'النقدية', m: paidCash});
+    credit.push({a: 'خصم مكتسب', m: discount});
+
+    notes.push(`🧠 **تحليل العملية:** وجدت مبالغ متعددة (إجمالي، مدفوع، خصم). العملية هي سداد لمورد.`);
+    notes.push(`🟢 **المدين:** حساب (الموردون) بـ ${totalDebt}، لأن سداد الدين يُنقص الالتزام، والالتزامات تنقص بالمدين.`);
+    notes.push(`🔴 **الدائن:** حساب (${moneyAcc || 'النقدية'}) بـ ${paidCash}، لأن هذا هو المبلغ الذي خرج فعلياً.`);
+    notes.push(`🔴 **الدائن:** حساب (خصم مكتسب) بـ ${discount}، لأن الخصم الذي حصلنا عليه يعتبر إيراداً يزيد بالدائن.`);
+    return {debits: debit, credits: credit, notes: notes};
+  }
+
+  /* 2. تحصيل من العملاء مع خصم مسموح به */
+  if (isCollect && isCustomer && isDiscount) {
+    const totalDebt = maxAmount;
+    const receivedCash = secondAmount || totalDebt;
+    const discount = totalDebt - receivedCash;
+
+    debit.push({a: moneyAcc || 'النقدية', m: receivedCash});
+    debit.push({a: 'خصم مسموح به', m: discount});
+    credit.push({a: 'العملاء', m: totalDebt});
+
+    notes.push(`🧠 **تحليل العملية:** تحصيل من عميل مع منحه خصم.`);
+    notes.push(`🟢 **المدين:** (${moneyAcc || 'النقدية'}) بـ ${receivedCash}، لأن الأموال دخلت. و (خصم مسموح به) بـ ${discount}، لأنه مصروف يزيد بالمدين.`);
+    notes.push(`🔴 **الدائن:** (العملاء) بـ ${totalDebt}، لإقفال كامل مديونية العميل.`);
+    return {debits: debit, credits: credit, notes: notes};
+  }
+
+  /* 3. شراء مع دفع جزء والباقي على الحساب */
+  if (isBuy && isCredit && secondAmount) {
+    const total = maxAmount;
+    const paid = secondAmount;
+    const remaining = total - paid;
+    const isAsset = /أثاث|سيارة|أرض|مبنى|أجهزة/.test(text);
+    const debitAcc = isAsset ? assetWord : 'المشتريات';
+
+    debit.push({a: debitAcc, m: total});
+    credit.push({a: moneyAcc || 'النقدية', m: paid});
+    if (remaining > 0) credit.push({a: 'الموردون', m: remaining});
+
+    notes.push(`🧠 **تحليل العملية:** شراء بقيمة إجمالية، مع دفع جزء نقداً وتأجيل الباقي.`);
+    notes.push(`🟢 **المدين:** (${debitAcc}) بـ ${total}، لأن الأصل أو البضاعة دخلت بالكامل.`);
+    notes.push(`🔴 **الدائن:** (${moneyAcc || 'النقدية'}) بـ ${paid} للمدفوع، و (الموردون) بـ ${remaining} للباقي الآجل.`);
+    return {debits: debit, credits: credit, notes: notes};
+  }
+
+  /* 4. شراء مع دفع نقداً وشيك */
+  if (isBuy && /نقدا|كاش/.test(text) && /شيك|بنك/.test(text) && secondAmount) {
+    const total = maxAmount;
+    // افتراض أن المبلغ الأصغر هو الشيك والنقدية
+    debit.push({a: /أثاث|سيارة|أرض|مبنى|أجهزة/.test(text) ? assetWord : 'المشتريات', m: total});
+    credit.push({a: 'النقدية', m: secondAmount});
+    credit.push({a: 'البنك', m: total - secondAmount});
+
+    notes.push(`🧠 **تحليل العملية:** شراء تم سداده بوسيلتين (نقدية وشيك).`);
+    notes.push(`🟢 **المدين:** (${/أثاث|سيارة|أرض/.test(text) ? assetWord : 'المشتريات'}) بالتكلفة الإجمالية ${total}.`);
+    notes.push(`🔴 **الدائن:** (النقدية) بـ ${secondAmount}، و (البنك) بـ ${total - secondAmount}.`);
+    return {debits: debit, credits: credit, notes: notes};
+  }
+
+  /* 5. مردودات المشتريات (رد بضاعة) */
+  if (/رد|مرتجع|إرجاع/.test(text) && (isBuy || isSupplier)) {
+    debit.push({a: 'الموردون', m: maxAmount});
+    credit.push({a: 'مردودات المشتريات', m: maxAmount});
+    notes.push(`🧠 **تحليل العملية:** إرجاع بضاعة إلى مورد.`);
+    notes.push(`🟢 **المدين:** (الموردون) لأن دينهم قل بسبب الإرجاع.`);
+    notes.push(`🔴 **الدائن:** (مردودات المشتريات) لتخفيض تكلفة المشتريات.`);
+    return {debits: debit, credits: credit, notes: notes};
+  }
+
+  /* 6. مردودات المبيعات */
+  if (/رد|مرتجع|إرجاع/.test(text) && (isSell || isCustomer)) {
+    debit.push({a: 'مردودات المبيعات', m: maxAmount});
+    credit.push({a: 'العملاء', m: maxAmount});
+    notes.push(`🧠 **تحليل العملية:** إرجاع بضاعة من عميل.`);
+    notes.push(`🟢 **المدين:** (مردودات المبيعات) لتخفيض الإيراد.`);
+    notes.push(`🔴 **الدائن:** (العملاء) لأن مديونيتهم انخفضت.`);
+    return {debits: debit, credits: credit, notes: notes};
+  }
+
+  /* 7. المصروفات */
+  if (isPay && !isSupplier) {
+    debit.push({a: expenseWord, m: maxAmount});
+    credit.push({a: moneyAcc || 'النقدية', m: maxAmount});
+    notes.push(`🧠 **تحليل العملية:** دفع مصروف (${expenseWord}).`);
+    notes.push(`🟢 **المدين:** حساب المصروف يزيد بالمدين.`);
+    notes.push(`🔴 **الدائن:** (${moneyAcc || 'النقدية'}) لأن الأموال خرجت.`);
+    return {debits: debit, credits: credit, notes: notes};
+  }
+
+  /* 8. التأسيس */
   if (isCapital) {
-    debit.push({a: moneyAcc, m: amount});
-    credit.push({a:'رأس المال', m: amount});
-    aiThoughts.push(`🧠 استنتجت أنها **عملية تأسيس أو زيادة استثمار** لوجود كلمات (رأس مال/بدأ).`);
-    aiThoughts.push(`🟢 **المدين:** حساب (${moneyAcc}) زاد، والأصول عند زيادتها تكون مدينة. (${moneyReason}).`);
-    aiThoughts.push(`🔴 **الدائن:** حساب (رأس المال) زاد، وحقوق الملكية بطبيعتها دائنة.`);
-    return {debits: debit, credits: credit, notes: aiThoughts};
+    debit.push({a: moneyAcc || 'النقدية', m: maxAmount});
+    credit.push({a: 'رأس المال', m: maxAmount});
+    notes.push(`🧠 **تحليل العملية:** قيد افتتاحي وتأسيس.`);
+    notes.push(`🟢 **المدين:** الأصول المقدمة من المالك.`);
+    notes.push(`🔴 **الدائن:** (رأس المال) حقوق الملكية تزيد بالدائن.`);
+    return {debits: debit, credits: credit, notes: notes};
   }
 
-  /* سيناريو 2: عمليات الشراء */
+  /* 9. شراء عادي (نقدي أو آجل) */
   if (isBuy) {
-    aiThoughts.push(`🧠 استنتجت أنها **عملية شراء** لوجود كلمة تفيد ذلك.`);
-    if (entity && entity.type === 'assets') {
-      debit.push({a: entity.accountName, m: amount});
-      aiThoughts.push(`🟢 **المدين:** تم شراء أصل (${entity.accountName})، و[${entity.rule}] لذلك زاد في الطرف المدين.`);
-    } else {
-      debit.push({a: 'المشتريات', m: amount});
-      aiThoughts.push(`🟢 **المدين:** تم شراء بضاعة فتسجل (المشتريات). المصروفات بطبيعتها مدينة.`);
-    }
-
-    if (isCredit || (entity && entity.type === 'liabilities')) {
-      credit.push({a: 'الموردون', m: amount});
-      aiThoughts.push(`🔴 **الدائن:** العملية تمت (بالأجل)، فنشأ التزام على المنشأة لصالح (الموردين). الالتزامات تزيد بالدائن.`);
-    } else {
-      credit.push({a: moneyAcc, m: amount});
-      aiThoughts.push(`🔴 **الدائن:** تم السداد من (${moneyAcc}). الأصول عندما تنقص تصبح دائنة. (${moneyReason}).`);
-    }
-    return {debits: debit, credits: credit, notes: aiThoughts};
+    const acc = /أثاث|سيارة|أرض|مبنى|أجهزة/.test(text) ? assetWord : 'المشتريات';
+    debit.push({a: acc, m: maxAmount});
+    credit.push({a: isCredit ? 'الموردون' : (moneyAcc || 'النقدية'), m: maxAmount});
+    notes.push(`🧠 **تحليل العملية:** شراء ${acc}.`);
+    notes.push(`🟢 **المدين:** (${acc}) زاد.`);
+    notes.push(`🔴 **الدائن:** (${isCredit ? 'الموردون' : (moneyAcc || 'النقدية')}) ${isCredit ? 'لأن الشراء آجل.' : 'لأن الدفع تم نقداً.'}`);
+    return {debits: debit, credits: credit, notes: notes};
   }
 
-  /* سيناريو 3: عمليات البيع */
+  /* 10. بيع عادي */
   if (isSell) {
-    aiThoughts.push(`🧠 استنتجت أنها **عملية بيع** لوجود كلمة تفيد ذلك.`);
-    if (isCredit) {
-      debit.push({a: 'العملاء', m: amount});
-      aiThoughts.push(`🟢 **المدين:** البيع تم (بالأجل)، فزادت مديونية (العملاء). والعملاء أصل يزيد بالمدين.`);
-    } else {
-      debit.push({a: moneyAcc, m: amount});
-      aiThoughts.push(`🟢 **المدين:** تم التحصيل في (${moneyAcc}) فزاد الأصل (مدين). (${moneyReason}).`);
-    }
-
-    if (entity && entity.type === 'assets') {
-      credit.push({a: entity.accountName, m: amount});
-      aiThoughts.push(`🔴 **الدائن:** تم بيع أصل (${entity.accountName}) ونقص من المنشأة. الأصول عندما تنقص تُسجل دائن.`);
-    } else {
-      credit.push({a: 'المبيعات', m: amount});
-      aiThoughts.push(`🔴 **الدائن:** الإيراد تحقق من بيع البضاعة وسُجل (المبيعات). الإيرادات بطبيعتها دائنة.`);
-    }
-    return {debits: debit, credits: credit, notes: aiThoughts};
+    debit.push({a: isCredit ? 'العملاء' : (moneyAcc || 'النقدية'), m: maxAmount});
+    credit.push({a: 'المبيعات', m: maxAmount});
+    notes.push(`🧠 **تحليل العملية:** عملية بيع.`);
+    notes.push(`🟢 **المدين:** (${isCredit ? 'العملاء' : (moneyAcc || 'النقدية')}) ${isCredit ? 'لأن البيع آجل.' : 'لأن التحصيل نقدي.'}`);
+    notes.push(`🔴 **الدائن:** (المبيعات) إيراد يزيد بالدائن.`);
+    return {debits: debit, credits: credit, notes: notes};
   }
 
-  /* سيناريو 4: دفع المصروفات أو سداد الديون */
-  if (isPay) {
-    aiThoughts.push(`🧠 استنتجت أنها **عملية سداد مالي أو دفع مصروف**.`);
-    if (entity && entity.type === 'liabilities') {
-      debit.push({a: 'الموردون', m: amount});
-      aiThoughts.push(`🟢 **المدين:** تم سداد التزام للموردين فنقص الالتزام. الالتزامات عندما تنقص تصبح مدينة.`);
-    } else if (entity && entity.type === 'expenses') {
-      debit.push({a: entity.accountName, m: amount});
-      aiThoughts.push(`🟢 **المدين:** إثبات مصروف (${entity.accountName}). [${entity.rule}].`);
-    } else {
-      debit.push({a: 'مصروفات عمومية', m: amount});
-      aiThoughts.push(`🟢 **المدين:** لم يتم تحديد نوع المصروف بدقة، فتم افتراضه (مصروفات عمومية).`);
-    }
-    
-    credit.push({a: moneyAcc, m: amount});
-    aiThoughts.push(`🔴 **الدائن:** تم خروج الأموال من (${moneyAcc}). الأصول عندما تنقص تُسجل دائن.`);
-    return {debits: debit, credits: credit, notes: aiThoughts};
-  }
-
-  /* سيناريو 5: تحصيل الإيرادات أو تحصيل الديون */
+  /* 11. تحصيل عادي من عميل */
   if (isCollect) {
-    aiThoughts.push(`🧠 استنتجت أنها **عملية تحصيل أموال**.`);
-    debit.push({a: moneyAcc, m: amount});
-    aiThoughts.push(`🟢 **المدين:** دخلت الأموال في (${moneyAcc}) فزاد الأصل (مدين). (${moneyReason}).`);
-
-    if (entity && entity.type === 'revenues') {
-      credit.push({a: entity.accountName, m: amount});
-      aiThoughts.push(`🔴 **الدائن:** تحقق إيراد (${entity.accountName}). [${entity.rule}].`);
-    } else if (entity && (entity.type === 'customers' || text.includes('من'))) {
-      credit.push({a: 'العملاء', m: amount});
-      aiThoughts.push(`🔴 **الدائن:** تم التحصيل من العملاء فنقصت مديونيتهم. الأصول (العملاء) تنقص بالدائن.`);
-    } else {
-      credit.push({a: 'إيرادات متنوعة', m: amount});
-      aiThoughts.push(`🔴 **الدائن:** لم يُحدد نوع الإيراد، فتم افتراضه (إيرادات متنوعة).`);
-    }
-    return {debits: debit, credits: credit, notes: aiThoughts};
+    debit.push({a: moneyAcc || 'النقدية', m: maxAmount});
+    credit.push({a: isCustomer ? 'العملاء' : revenueWord, m: maxAmount});
+    notes.push(`🧠 **تحليل العملية:** تحصيل مبالغ.`);
+    return {debits: debit, credits: credit, notes: notes};
   }
 
-  // إذا لم يتمكن من فهم الجملة نهائياً
-  return {error:'🤖 **عذراً!** صيغة العملية معقدة أو غير مألوفة. يرجى استخدام كلمات واضحة مثل (شراء، بيع، سداد مصروف، تحصيل إيراد، إيداع).'};
+  return {error:'🤖 **عذراً!** الجملة معقدة جداً ولم أفهم العلاقة بين الأرقام. يرجى تبسيطها (مثال: شراء أثاث بـ 5000 نقداً).'};
 }
 
-/* ===== 4. إدارة الحسابات والعرض (UI Rendering) ===== */
+/* ===== 3. العرض والمقارنة (UI) ===== */
 function ensureAccount(name){
   if(!name || typeof accounts === 'undefined') return;
   if(accounts.includes(name)) return;
@@ -210,7 +232,7 @@ function compare(user, smart){
   const sC = smart.credits.map(x => x.a + ':' + (+x.m).toFixed(2)).sort().join('|');
   
   if(!user.debits.length && !user.credits.length) return {status:'empty', msg:'لم تكتب قيداً بعد — راجع مقترح الذكاء الاصطناعي 👇'};
-  if(uD === sD && uC === sC) return {status:'perfect', msg:'🎉 ممتاز! قيدك يطابق تماماً تفكير الذكاء الاصطناعي والمبادئ المحاسبية.'};
+  if(uD === sD && uC === sC) return {status:'perfect', msg:'🎉 ممتاز! قيدك يطابق تماماً تفكير الذكاء الاصطناعي.'};
   if(uD === sC && uC === sD) return {status:'swapped', msg:'⚠️ تحذير: الأطراف صحيحة لكنك عكست المدين والدائن.'};
   return {status:'diff', msg:'❌ القيد غير متطابق — راجع التفسير أدناه لتعرف لماذا.'};
 }
@@ -240,7 +262,6 @@ function showResult(res){
   box.className = `mt-4 text-right rounded-xl p-5 border-2 ${cls} shadow-sm no-print transition-all`;
   box.classList.remove('hidden');
   
-  // بناء قسم "تفكير الذكاء الاصطناعي"
   const aiThinkingHTML = parsed.notes ? `
     <div class="mt-4 p-4 bg-white rounded-lg border border-gray-200 shadow-inner">
       <div class="font-bold text-indigo-800 mb-2 flex items-center gap-2">
@@ -355,9 +376,9 @@ function injectVerifyButton(){
       <button type="button" id="verifyBtn" onclick="window.checkEntrySmart()"
         class="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-bold px-8 py-3 rounded-xl shadow-lg inline-flex items-center gap-2 transform transition hover:scale-105 w-full md:w-auto justify-center">
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
-        تحليل القيد بالذكاء الاصطناعي (AI)
+        تحليل القيد بالذكاء الاصطناعي (AI V3)
       </button>
-      <span class="block text-xs text-gray-500 mt-2">اكتب العملية واضغط هنا، وسيقوم المحرك بشرح خطوات الحل لك.</span>
+      <span class="block text-xs text-gray-500 mt-2">اكتب العملية (حتى لو مركبة أو بها خصم)، وسيقوم المحرك بشرح خطوات الحل لك.</span>
     </div>
     <div id="verifyResult" class="hidden"></div>
   `;
